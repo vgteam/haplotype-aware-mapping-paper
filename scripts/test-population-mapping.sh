@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # test-population-mapping.sh: evaluate the performance impact of population-aware mapping using toil-vg mapeval on AWS
 
-set -e
+set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/vgteam/toil-vg.git@986a40b875b0f2c133d043c203f33b16ebb73925#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@03eb211505cf3f35bac82f6d9e9c4b128f956766#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -39,10 +39,6 @@ MANAGE_CLUSTER=1
 # We don't if we're asked to keep it and Toil errors out.
 REMOVE_JOBSTORE=1
 
-# Should we delete the outstore at the end of the script, if we're deleting the
-# jobstore?
-REMOVE_OUTSTORE=1
-
 # What named graph region should we be operating on?
 # We can do "21", "whole-genome", "MHC", etc.
 INPUT_DATA_MODE="21"
@@ -53,8 +49,6 @@ INPUT_DATA_MODE="21"
 TRAINING_FASTQ="ftp://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/NA12878/NIST_NA12878_HG001_HiSeq_300x/131219_D00360_005_BH814YADXX/Project_RM8398/Sample_U5a/U5a_AGTCAA_L002_R1_007.fastq.gz"
 # And a read simulation seed
 READ_SEED="90"
-# Chunks to simulate in (which affects results)
-READ_CHUNKS="32"
 
 # Define the sample to use for synthesizing reads
 SAMPLE_NAME="HG00096"
@@ -65,13 +59,20 @@ MIN_AF="0.0335570469"
 # Put this in front of commands to do or not do them, depending on if we are doing a dry run or not
 PREFIX=""
 
+function url_to_store() {
+    # Convert an s3:// URL to an output store specifier like aws:us-west-2:bucket/path/to/thing 
+    local URL="${1}"
+    shift
+    echo "${URL}" | sed 's|^s3://|aws:us-west-2:|'
+}
+
 usage() {
     # Print usage to stderr
     exec 1>&2
-    printf "Usage: $0 [Options] KEYPAIR_NAME GRAPHS_PATH OUTPUT_PATH \n"
+    printf "Usage: $0 [Options] KEYPAIR_NAME GRAPHS_URL OUTPUT_URL \n"
     printf "\tKEYPAIR_NAME\tSSH keypair in Amazon us-west-2 region to use for cluster authentication\n"
-    printf "\tGRAPHS_PATH\tLocal file system path where generated graphs, indexes, and reads should be cached\n"
-    printf "\tOUTPUT_PATH\tLocal file syetem path where output data (mapped reads and statistics) should be downloaded\n"
+    printf "\tGRAPHS_URL\tS3 URL where generated graphs, indexes, and reads should be cached\n"
+    printf "\tOUTPUT_URL\tS3 URL where output data (mapped reads and statistics) should be deposited\n"
     printf "Options:\n\n"
     printf "\t-d\tDo a dry run\n"
     printf "\t-p PACKAGE\tUse the given Python package specifier to install toil-vg.\n"
@@ -80,7 +81,7 @@ usage() {
     printf "\t-v DOCKER\tUse the given Docker image specifier for vg.\n"
     printf "\t-R RUN_ID\tUse or restart the given run ID.\n"
     printf "\t-r REGION\tRun on the given named region (21, MHC, BRCA1).\n"
-    printf "\t-k \tKeep the out store and job store in case of error.\n"
+    printf "\t-k \tKeep the job store in case of error.\n"
     exit 1
 }
 
@@ -128,9 +129,9 @@ fi
 
 KEYPAIR_NAME="${1}"
 shift
-GRAPHS_PATH="${1}"
+GRAPHS_URL="${1}"
 shift
-OUTPUT_PATH="${1}"
+OUTPUT_URL="${1}"
 shift
 
 if [[ "$#" -gt "0" ]]; then
@@ -144,6 +145,8 @@ case "${INPUT_DATA_MODE}" in
     21)
         # Do a lot of reads
         READ_COUNT="10000000"
+        # In several chunks
+        READ_CHUNKS="32"
         # Define a region name to process. This sets the name that the graphs and
         # indexes will be saved/looked for under.
         REGION_NAME="CHR21"
@@ -158,6 +161,7 @@ case "${INPUT_DATA_MODE}" in
     MHC)
         # Actually do a smaller test
         READ_COUNT="100000"
+        READ_CHUNKS="2"
         REGION_NAME="MHC"
         GRAPH_CONTIG="6"
         GRAPH_REGION="${GRAPH_CONTIG}:28510119-33480577"
@@ -167,6 +171,7 @@ case "${INPUT_DATA_MODE}" in
     BRCA1)
         # Do just BRCA1 and a very few reads
         READ_COUNT="1000"
+        READ_CHUNKS="1"
         REGION_NAME="BRCA1"
         GRAPH_CONTIG="17"
         GRAPH_REGION="${GRAPH_CONTIG}:43044293-43125483"
@@ -178,26 +183,18 @@ case "${INPUT_DATA_MODE}" in
         exit 1
 esac
 
-# Compute where to save our results from the various jobs
-OUTPUT_STORE_BASE="aws:us-west-2:cgl-pipeline-inputs/vg_cgl/pop-map-script/runs/${RUN_ID}"
-OUTPUT_STORE_URL_BASE="s3://cgl-pipeline-inputs/vg_cgl/pop-map-script/runs/${RUN_ID}"
+# Compute number of sim
 
-# Where do we store our jobs under?
+# Where do we store our job trees under?
 JOB_TREE_BASE="aws:us-west-2:${RUN_ID}"
 
-# What trees/outstores should we use for each step? Work it out now so cleanup can fix it
+# What trees should we use for each step? Work it out now so cleanup can clean them later.
 # Note that job tree names can't have / so we use -
 JOB_TREE_CONSTRUCT="${JOB_TREE_BASE}-construct"
-OUTPUT_STORE_CONSTRUCT="${OUTPUT_STORE_BASE}/construct"
-OUTPUT_STORE_URL_CONSTRUCT="${OUTPUT_STORE_URL_BASE}/construct"
 JOB_TREE_SIM="${JOB_TREE_BASE}-sim"
-OUTPUT_STORE_SIM="${OUTPUT_STORE_BASE}/sim"
-OUTPUT_STORE_URL_SIM="${OUTPUT_STORE_URL_BASE}/sim"
 JOB_TREE_MAPEVAL="${JOB_TREE_BASE}-mapeval"
-OUTPUT_STORE_MAPEVAL="${OUTPUT_STORE_BASE}/mapeval"
-OUTPUT_STORE_URL_MAPEVAL="${OUTPUT_STORE_URL_BASE}/mapeval"
 
-echo "Running run ${RUN_ID} as ${KEYPAIR_NAME} on ${GRAPH_REGION} for ${READ_COUNT} reads into ${OUTPUT_PATH}"
+echo "Running run ${RUN_ID} as ${KEYPAIR_NAME} on ${GRAPH_REGION} for ${READ_COUNT} reads into ${OUTPUT_URL}"
 
 # Make sure we don't leave the cluster running or data laying around on exit.
 function clean_up() {
@@ -207,15 +204,6 @@ function clean_up() {
         $PREFIX toil clean "${JOB_TREE_CONSTRUCT}"
         $PREFIX toil clean "${JOB_TREE_SIM}"
         $PREFIX toil clean "${JOB_TREE_MAPEVAL}"
-        
-        if [[ "${REMOVE_OUTSTORE}" == "1" ]]; then
-            # Toil is happily done and we downloaded things OK.
-            # Delete the outputs.
-            # It is not a problem that we delete simulated reads, etc. because we copied/saved them.
-            $PREFIX aws s3 rm --recursive "${OUTPUT_STORE_URL_CONSTRUCT}"
-            $PREFIX aws s3 rm --recursive "${OUTPUT_STORE_URL_SIM}"
-            $PREFIX aws s3 rm --recursive "${OUTPUT_STORE_URL_MAPEVAL}"
-        fi
     fi
     if [[ "${MANAGE_CLUSTER}" == "1" ]]; then
         # Destroy the cluster
@@ -250,9 +238,6 @@ $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin
     scikit-learn \
     "${TOIL_VG_PACKAGE}"
    
-echo "aws-cli version on cluster is: "
-$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/aws --version
-
 # We need the master's IP to make Mesos go
 MASTER_IP="$($PREFIX toil ssh-cluster --insecure --zone=us-west-2a --logOff "${CLUSTER_NAME}" hostname -i)"
 
@@ -270,20 +255,13 @@ TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
 
 # Now we are set up to do the actual experiment.
 
-if [[ ! -d "${GRAPHS_PATH}" ]]; then
-    # Graphs need to be gotten
-    
-    if [[ -e "${GRAPHS_PATH}" ]]; then
-        # It needs to not exist at all
-        echo "ERROR: Graph path ${GRAPHS_PATH} is not a directory" 1>&2
-        exit 1
-    fi
+if ! aws s3 ls >/dev/null "${GRAPHS_URL}" ; then
+    # Graphs need to be generated
     
     # Construct the graphs
-    # Hardcoded constants here go with the snp1kg URLs above.
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg construct \
         "${JOB_TREE_CONSTRUCT}" \
-        "${OUTPUT_STORE_CONSTRUCT}" \
+        "$(url_to_store "${GRAPHS_URL}")" \
         --whole_genome_config \
         ${VG_DOCKER_OPTS} \
         --vcf "${GRAPH_VCF_URL}" \
@@ -302,41 +280,35 @@ if [[ ! -d "${GRAPHS_PATH}" ]]; then
         --snarls_index \
         "${TOIL_CLUSTER_OPTS[@]}"
         
-        
-    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/aws s3 sync --acl public-read "${OUTPUT_STORE_URL_CONSTRUCT}" "${OUTPUT_STORE_URL_CONSTRUCT}"
-        
-    # Download them
-    $PREFIX mkdir -p "${GRAPHS_PATH}"
-    $PREFIX aws s3 sync "${OUTPUT_STORE_URL_CONSTRUCT}" "${GRAPHS_PATH}"
+    # Mark readable    
+    #$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/aws s3 sync --acl public-read "${OUTPUT_STORE_URL_CONSTRUCT}" "${OUTPUT_STORE_URL_CONSTRUCT}"
 fi
 
 # Now work out where in there these simulated reads belong
-READS_PATH="${GRAPHS_PATH}/sim-${READ_SEED}-${READ_COUNT}-${READ_CHUNKS}"
+READS_URL="${GRAPHS_URL}/sim-${READ_SEED}-${READ_COUNT}-${READ_CHUNKS}"
 
-if [[ ! -e "${READS_PATH}" ]]; then 
+if ! aws s3 ls >/dev/null "${READS_URL}" ; then 
     # Now we need to simulate reads from the two haplotypes
     # This will make a "sim.gam"
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg sim \
         "${JOB_TREE_SIM}" \
-        "${GRAPHS_PATH}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_0.xg" \
-        "${GRAPHS_PATH}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_1.xg" \
+        "${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_0.xg" \
+        "${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_1.xg" \
         "${READ_COUNT}" \
-        "${OUTPUT_STORE_SIM}" \
+        "$(url_to_store "${READS_URL}")" \
         --whole_genome_config \
         ${VG_DOCKER_OPTS} \
-        --annotate_xg "${GRAPHS_PATH}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo.xg" \
+        --annotate_xg "${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo.xg" \
         --gam \
         --fastq_out \
         --seed "${READ_SEED}" \
         --sim_chunks "${READ_CHUNKS}" \
         --fastq "${TRAINING_FASTQ}" \
         "${TOIL_CLUSTER_OPTS[@]}"
+    
+    # Mark readable
+    #$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/aws s3 sync --acl public-read "${OUTPUT_STORE_URL_SIM}" "${OUTPUT_STORE_URL_SIM}"
         
-    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/aws s3 sync --acl public-read "${OUTPUT_STORE_URL_SIM}" "${OUTPUT_STORE_URL_SIM}"
-        
-    # Download them
-    $PREFIX mkdir -p "${READS_PATH}"
-    $PREFIX aws s3 sync "${OUTPUT_STORE_URL_SIM}" "${GRAPHS_PATH}"
 fi
 
 # Now we have both the graphs and reads locally, but built in the cloud.
@@ -346,53 +318,41 @@ GRAPH_URLS=()
 GAM_NAMES=()
 
 # We want the actual graph with its indexes (minus the sample under test)
-GRAPH_URLS+=("${GRAPHS_PATH}/snp1kg-${REGION_NAME}_filter")
+GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter")
 GAM_NAMES+=("snp1kg")
 
-GRAPH_URLS+=("${GRAPHS_PATH}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}")
+GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}")
 GAM_NAMES+=("snp1kg-minaf")
 
 # We want a primary negative control
-GRAPH_URLS+=("${GRAPHS_PATH}/primary")
+GRAPH_URLS+=("${GRAPHS_URL}/primary")
 GAM_NAMES+=("primary")
 
 # Run one big mapeval run that considers all conditions we are interested in
 # TODO: Controls for no haplotype-aware-ness?
 $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg mapeval \
     "${JOB_TREE_MAPEVAL}" \
-    "${OUTPUT_STORE_MAPEVAL}" \
+    "$(url_to_store "${OUTPUT_URL}")" \
     --whole_genome_config \
     ${VG_DOCKER_OPTS} \
     --index-bases "${GRAPH_URLS[@]}" \
-    --gam-names "${GRAPH_NAMES[@]}" \
+    --gam-names "${GAM_NAMES[@]}" \
     --multipath \
-    --mpmap_opts "--max-paths 10" \
     --use-gbwt \
     --use-snarls \
-    --fastq "${READS_PATH}/sim.fq.gz" \
-    --truth "${READS_PATH}/true.pos" \
+    --fastq "${READS_URL}/sim.fq.gz" \
+    --truth "${READS_URL}/true.pos" \
     "${TOIL_CLUSTER_OPTS[@]}"
 TOIL_ERROR="$?"
     
 # Make sure the output is public
-$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/aws s3 sync --acl public-read "${OUTPUT_STORE_URL_MAPEVAL}" "${OUTPUT_STORE_URL_MAPEVAL}"
+#$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/aws s3 sync --acl public-read "${OUTPUT_STORE_URL_MAPEVAL}" "${OUTPUT_STORE_URL_MAPEVAL}"
     
-$PREFIX mkdir -p "${OUTPUT_PATH}"
-$PREFIX aws s3 sync "${OUTPUT_STORE_URL_MAPEVAL}" "${OUTPUT_PATH}"
-DOWNLOAD_ERROR="$?"
-
 if [[ "${TOIL_ERROR}" == "0" ]]; then
     # Toil completed successfully.
     # We will delete the job store
     REMOVE_JOBSTORE=1
 fi
 
-if [[ ! "${DOWNLOAD_ERROR}" == "0" ]]; then
-    # Download failed
-    # We will keep the out store
-    # (we also keep if if Toil fails and we're keeping the jobstore)
-    REMOVE_OUTSTORE=0
-fi
-
-# Cluster, tree, and output will get cleaned up by the exit trap
+# Cluster and tree will get cleaned up by the exit trap
 
