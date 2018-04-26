@@ -4,10 +4,21 @@
 set -e
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/vgteam/toil-vg.git@1d439b2d678e163a35edd5143bc4d1e9ce31990e"
+TOIL_VG_PACKAGE="git+https://github.com/vgteam/toil-vg.git@986a40b875b0f2c133d043c203f33b16ebb73925#egg=toil-vg"
 
-# What Toil should we use?
-TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.11.0
+# What Toil appliance should we use? Ought to match the locally installed Toil,
+# but can't quite if the locally installed Toil is locally modified or
+# installed from a non-release Git commit.
+TOIL_APPLIANCE_SELF="quay.io/ucsc_cgl/toil:3.16.0a1.dev2290-c6d3a2a1677ba3928ad5a9ebb6d862b02dd97998"
+
+# What version of awscli do we use? This has to be compatible with the
+# botocore/boto3 that toil-vg and toil can agree on, and each awscli version
+# seems to require exactly one botocore version, and pip can't do something
+# sensible like find the one that goes with the botocore we need to have when
+# we just ask for "awscli". So we work out the right version manually and live
+# in hope that <https://github.com/pypa/pip/issues/988> will eventually stop
+# plaguing our lab.
+AWSCLI_PACKAGE="awscli==1.14.70"
 
 # What vg should we use?
 VG_DOCKER_OPTS=()
@@ -175,13 +186,14 @@ OUTPUT_STORE_URL_BASE="s3://cgl-pipeline-inputs/vg_cgl/pop-map-script/runs/${RUN
 JOB_TREE_BASE="aws:us-west-2:${RUN_ID}"
 
 # What trees/outstores should we use for each step? Work it out now so cleanup can fix it
-JOB_TREE_CONSTRUCT="${JOB_TREE_BASE}/construct"
+# Note that job tree names can't have / so we use -
+JOB_TREE_CONSTRUCT="${JOB_TREE_BASE}-construct"
 OUTPUT_STORE_CONSTRUCT="${OUTPUT_STORE_BASE}/construct"
 OUTPUT_STORE_URL_CONSTRUCT="${OUTPUT_STORE_URL_BASE}/construct"
-JOB_TREE_SIM="${JOB_TREE_BASE}/sim"
+JOB_TREE_SIM="${JOB_TREE_BASE}-sim"
 OUTPUT_STORE_SIM="${OUTPUT_STORE_BASE}/sim"
 OUTPUT_STORE_URL_SIM="${OUTPUT_STORE_URL_BASE}/sim"
-JOB_TREE_MAPEVAL="${JOB_TREE_BASE}/mapeval"
+JOB_TREE_MAPEVAL="${JOB_TREE_BASE}-mapeval"
 OUTPUT_STORE_MAPEVAL="${OUTPUT_STORE_BASE}/mapeval"
 OUTPUT_STORE_URL_MAPEVAL="${OUTPUT_STORE_URL_BASE}/mapeval"
 
@@ -212,6 +224,9 @@ function clean_up() {
 }
 trap clean_up EXIT
 
+echo "Starting cluster ${CLUSTER_NAME}"
+echo "Destroy with: toil destroy-cluster '${CLUSTER_NAME}' -z us-west-2a"
+
 if [[ "${MANAGE_CLUSTER}" == "1" ]]; then
     # Start up a cluster
     TOIL_APPLIANCE_SELF="${TOIL_APPLIANCE_SELF}" $PREFIX toil launch-cluster "${CLUSTER_NAME}" --leaderNodeType=t2.medium -z us-west-2a "--keyPairName=${KEYPAIR_NAME}"
@@ -226,18 +241,29 @@ $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" apt inst
 # For hot deployment to work, toil-vg needs to be in a virtualenv that can see the system Toil
 $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" virtualenv --system-site-packages venv
 
-$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/pip install pyyaml
-$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/pip install aws
-$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/pip install numpy
-$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/pip install scipy
-$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/pip install scikit-learn
-$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/pip install "${TOIL_VG_PACKAGE}"
+# Install all the Python stuff we need at once and hope pip is smart enough to figure out mutually compatible dependencies
+$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/pip install \
+    pyyaml \
+    "${AWSCLI_PACKAGE}" \
+    numpy \
+    scipy \
+    scikit-learn \
+    "${TOIL_VG_PACKAGE}"
+   
+echo "aws-cli version on cluster is: "
+$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/aws --version
 
 # We need the master's IP to make Mesos go
 MASTER_IP="$($PREFIX toil ssh-cluster --insecure --zone=us-west-2a --logOff "${CLUSTER_NAME}" hostname -i)"
 
 # Strip some garbage from MASTER_IP
 MASTER_IP="${MASTER_IP//[$'\t\r\n ']}"
+
+# Work out the Toil cluster options that we pass to each Toil/toil-vg run to point it at the cluster
+TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
+    --batchSystem mesos --provisioner=aws "--mesosMaster=${MASTER_IP}:5050" \
+    --nodeTypes=r3.8xlarge:0.85 --defaultPreemptable --maxNodes=${MAX_NODES} \
+    --alphaPacking 2.0)
 
 
 ########################################################################################################
@@ -264,7 +290,6 @@ if [[ ! -d "${GRAPHS_PATH}" ]]; then
         --fasta "${GRAPH_FASTA_URL}" \
         --out_name "snp1kg-${REGION_NAME}" \
         --alt_paths \
-        --realTimeLogging \
         --control_sample "${SAMPLE_NAME}" \
         --haplo_sample "${SAMPLE_NAME}" \
         --filter_samples "${SAMPLE_NAME}" \
@@ -274,7 +299,9 @@ if [[ ! -d "${GRAPHS_PATH}" ]]; then
         --gcsa_index \
         --xg_index \
         --gbwt_index \
-        --snarls_index
+        --snarls_index \
+        "${TOIL_CLUSTER_OPTS[@]}"
+        
         
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/aws s3 sync --acl public-read "${OUTPUT_STORE_URL_CONSTRUCT}" "${OUTPUT_STORE_URL_CONSTRUCT}"
         
@@ -302,7 +329,8 @@ if [[ ! -e "${READS_PATH}" ]]; then
         --fastq_out \
         --seed "${READ_SEED}" \
         --sim_chunks "${READ_CHUNKS}" \
-        --fastq "${TRAINING_FASTQ}"
+        --fastq "${TRAINING_FASTQ}" \
+        "${TOIL_CLUSTER_OPTS[@]}"
         
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/aws s3 sync --acl public-read "${OUTPUT_STORE_URL_SIM}" "${OUTPUT_STORE_URL_SIM}"
         
@@ -343,10 +371,7 @@ $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin
     --use-snarls \
     --fastq "${READS_PATH}/sim.fq.gz" \
     --truth "${READS_PATH}/true.pos" \
-    --realTimeLogging --logInfo \
-    --batchSystem mesos --provisioner=aws "--mesosMaster=${MASTER_IP}:5050" \
-    --nodeTypes=r3.8xlarge:0.85 --defaultPreemptable --maxNodes=${MAX_NODES}\
-    --alphaPacking 2.0
+    "${TOIL_CLUSTER_OPTS[@]}"
 TOIL_ERROR="$?"
     
 # Make sure the output is public
