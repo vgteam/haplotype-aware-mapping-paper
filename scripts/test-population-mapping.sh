@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@03eb211505cf3f35bac82f6d9e9c4b128f956766#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/vgteam/toil-vg.git@f3dab7f4eb49bc4a71ed9312bc87cc5b633deede#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -21,7 +21,7 @@ TOIL_APPLIANCE_SELF="quay.io/ucsc_cgl/toil:3.16.0a1.dev2290-c6d3a2a1677ba3928ad5
 AWSCLI_PACKAGE="awscli==1.14.70"
 
 # What vg should we use?
-VG_DOCKER_OPTS=()
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.5.0-3152-g12bf9e2f-t156-run")
 
 # How many nodes should we use at most?
 MAX_NODES=6
@@ -101,7 +101,7 @@ while getopts "hdp:t:c:v:R:r:k" o; do
             MANAGE_CLUSTER=0
             ;;
         v)
-            VG_DOCKER_OPTS="--vg_docker ${OPTARG}"
+            VG_DOCKER_OPTS=("--vg_docker" "${OPTARG}")
             ;;
         R)
             # This doesn't change the cluster name, which will still be the old run ID if not manually set.
@@ -263,7 +263,7 @@ if ! aws s3 ls >/dev/null "${GRAPHS_URL}" ; then
         "${JOB_TREE_CONSTRUCT}" \
         "$(url_to_store "${GRAPHS_URL}")" \
         --whole_genome_config \
-        ${VG_DOCKER_OPTS} \
+        "${VG_DOCKER_OPTS[@]}" \
         --vcf "${GRAPH_VCF_URL}" \
         --fasta "${GRAPH_FASTA_URL}" \
         --out_name "snp1kg-${REGION_NAME}" \
@@ -297,7 +297,7 @@ if ! aws s3 ls >/dev/null "${READS_URL}" ; then
         "${READ_COUNT}" \
         "$(url_to_store "${READS_URL}")" \
         --whole_genome_config \
-        ${VG_DOCKER_OPTS} \
+        "${VG_DOCKER_OPTS[@]}" \
         --annotate_xg "${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo.xg" \
         --gam \
         --fastq_out \
@@ -334,7 +334,7 @@ $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin
     "${JOB_TREE_MAPEVAL}" \
     "$(url_to_store "${OUTPUT_URL}")" \
     --whole_genome_config \
-    ${VG_DOCKER_OPTS} \
+    "${VG_DOCKER_OPTS[@]}" \
     --index-bases "${GRAPH_URLS[@]}" \
     --gam-names "${GAM_NAMES[@]}" \
     --multipath \
@@ -354,5 +354,4 @@ if [[ "${TOIL_ERROR}" == "0" ]]; then
     REMOVE_JOBSTORE=1
 fi
 
-# Cluster and tree will get cleaned up by the exit trap
-
+# Cluster and tree will get cleaned u
