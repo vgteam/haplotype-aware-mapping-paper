@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/vgteam/toil-vg.git@f3dab7f4eb49bc4a71ed9312bc87cc5b633deede#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/vgteam/toil-vg.git@09ca41e27d33de60485a976abff5f36b5735b789#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -23,8 +23,16 @@ AWSCLI_PACKAGE="awscli==1.14.70"
 # What vg should we use?
 VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.5.0-3152-g12bf9e2f-t156-run")
 
-# How many nodes should we use at most?
-MAX_NODES=6
+# What node types should we use?
+# Comma-separated, with :bid-in-dollars after the name for spot nodes
+NODE_TYPES="r3.8xlarge"
+# How many nodes should we use at most per type?
+# Also comma-separated.
+# TODO: These don't sort right pending https://github.com/BD2KGenomics/toil/issues/2195
+MAX_NODES="6"
+# And at least per type? (Should probably be 0)
+# Also comma-separated.
+MIN_NODES="1"
 
 # What's our unique run ID? Should be lower-case and start with a letter for maximum compatibility.
 # See <https://gist.github.com/earthgecko/3089509>
@@ -32,7 +40,8 @@ RUN_ID="run$(cat /dev/urandom | LC_CTYPE=C tr -dc 'a-z0-9' | fold -w 32 | head -
 
 # What cluster should we use?
 CLUSTER_NAME="${RUN_ID}"
-MANAGE_CLUSTER=1
+# Is our cluster just for this run, or persistent for multiple runs?
+PERSISTENT_CLUSTER=0
 
 # Should we delete the job store when we exit?
 # We do by default, and if the run finishes successfully.
@@ -51,7 +60,9 @@ TRAINING_FASTQ="ftp://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/NA12878/NIST_NA12
 READ_SEED="90"
 
 # Define the sample to use for synthesizing reads
-SAMPLE_NAME="HG00096"
+SAMPLE_NAME="NA12878"
+# And options to filter them out of graphs, along with people related to them
+FILTER_OPTS=("--filter_ceph" "--filter_samples" "${SAMPLE_NAME}")
 
 # What min allele frequency limit do we use?
 MIN_AF="0.0335570469"
@@ -77,15 +88,14 @@ usage() {
     printf "\t-d\tDo a dry run\n"
     printf "\t-p PACKAGE\tUse the given Python package specifier to install toil-vg.\n"
     printf "\t-t CONTAINER\tUse the given Toil container in the cluster (default: ${TOIL_APPLIANCE_SELF}).\n"
-    printf "\t-c CLUSTER\tUse the given existing Toil cluster.\n"
+    printf "\t-c CLUSTER\tUse the given persistent Toil cluster, which will be created if not present.\n"
     printf "\t-v DOCKER\tUse the given Docker image specifier for vg.\n"
     printf "\t-R RUN_ID\tUse or restart the given run ID.\n"
     printf "\t-r REGION\tRun on the given named region (21, MHC, BRCA1).\n"
-    printf "\t-k \tKeep the job store in case of error.\n"
     exit 1
 }
 
-while getopts "hdp:t:c:v:R:r:k" o; do
+while getopts "hdp:t:c:v:R:r:" o; do
     case "${o}" in
         d)
             PREFIX="echo"
@@ -98,7 +108,7 @@ while getopts "hdp:t:c:v:R:r:k" o; do
             ;;
         c)
             CLUSTER_NAME="${OPTARG}"
-            MANAGE_CLUSTER=0
+            PERSISTENT_CLUSTER=1
             ;;
         v)
             VG_DOCKER_OPTS=("--vg_docker" "${OPTARG}")
@@ -110,9 +120,6 @@ while getopts "hdp:t:c:v:R:r:k" o; do
             ;;
         r)
             INPUT_DATA_MODE="${OPTARG}"
-            ;;
-        k)
-            REMOVE_JOBSTORE=0
             ;;
         *)
             usage
@@ -140,6 +147,50 @@ if [[ "$#" -gt "0" ]]; then
     exit 1
 fi
 
+# Define some cluster management functions
+
+# Return success if the cluster with the given name exists, and failure otherwise
+function cluster_exists() {
+    local CLUSTER_NAME="${1}"
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" true
+}
+
+# Start up the cluster with the given name, using the given keypair, and install everything necessary on it
+function start_cluster() {
+    local CLUSTER_NAME="${1}"
+    shift
+    local KEYPAIR_NAME="${1}"
+    
+    echo "Creating cluster ${CLUSTER_NAME}"
+    
+    # Start the cluster
+    TOIL_APPLIANCE_SELF="${TOIL_APPLIANCE_SELF}" $PREFIX toil launch-cluster "${CLUSTER_NAME}" --leaderNodeType=t2.medium -z us-west-2a "--keyPairName=${KEYPAIR_NAME}"
+    
+    # We need to manually install git to make pip + git work...
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" apt update
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" apt install git -y
+
+    # Ignore the old virtualenv if re-using a cluster
+
+    # For hot deployment to work, toil-vg needs to be in a virtualenv that can see the system Toil
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" virtualenv --system-site-packages venv
+
+    # Install all the Python stuff we need at once and hope pip is smart enough to figure out mutually compatible dependencies
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/pip install \
+        pyyaml \
+        "${AWSCLI_PACKAGE}" \
+        numpy \
+        scipy \
+        scikit-learn \
+        "${TOIL_VG_PACKAGE}"
+}
+
+# Tear down the cluster with the given name
+function destroy_cluster() {
+    local CLUSTER_NAME="${1}"
+    $PREFIX toil destroy-cluster "${CLUSTER_NAME}" -z us-west-2a
+}
+
 # Fill in some variables characterizing our input based on the input data mode
 case "${INPUT_DATA_MODE}" in
     21)
@@ -150,12 +201,12 @@ case "${INPUT_DATA_MODE}" in
         # Define a region name to process. This sets the name that the graphs and
         # indexes will be saved/looked for under.
         REGION_NAME="CHR21"
-        # Define the contig we are using
-        GRAPH_CONTIG="21"
+        # Define the contigs we are using
+        GRAPH_CONTIGS=("21")
         # Define the region to build the graph on, as contig[:start-end]
-        GRAPH_REGION="${GRAPH_CONTIG}"
+        GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}")
         # Define the VCF and FASTA basenames. We assume the VCF has a TBI.
-        GRAPH_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg19-CHR21.vcf.gz"
+        GRAPH_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg19-CHR21.vcf.gz")
         GRAPH_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/CHR21.fa"
         ;;
     MHC)
@@ -163,9 +214,9 @@ case "${INPUT_DATA_MODE}" in
         READ_COUNT="100000"
         READ_CHUNKS="2"
         REGION_NAME="MHC"
-        GRAPH_CONTIG="6"
-        GRAPH_REGION="${GRAPH_CONTIG}:28510119-33480577"
-        GRAPH_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-MHC.vcf.gz"
+        GRAPH_CONTIGS=("6")
+        GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:28510119-33480577")
+        GRAPH_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-MHC.vcf.gz")
         GRAPH_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr6.fa.gz"
         ;;
     BRCA1)
@@ -173,17 +224,15 @@ case "${INPUT_DATA_MODE}" in
         READ_COUNT="1000"
         READ_CHUNKS="1"
         REGION_NAME="BRCA1"
-        GRAPH_CONTIG="17"
-        GRAPH_REGION="${GRAPH_CONTIG}:43044293-43125483"
-        GRAPH_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-BRCA1.vcf.gz"
+        GRAPH_CONTIGS=("17")
+        GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:43044293-43125483")
+        GRAPH_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-BRCA1.vcf.gz")
         GRAPH_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr17.fa.gz"
         ;;
     *)
         echo 1>&2 "Unknown input data set ${INPUT_DATA_MODE}"
         exit 1
 esac
-
-# Compute number of sim
 
 # Where do we store our job trees under?
 JOB_TREE_BASE="aws:us-west-2:${RUN_ID}"
@@ -194,60 +243,50 @@ JOB_TREE_CONSTRUCT="${JOB_TREE_BASE}-construct"
 JOB_TREE_SIM="${JOB_TREE_BASE}-sim"
 JOB_TREE_MAPEVAL="${JOB_TREE_BASE}-mapeval"
 
-echo "Running run ${RUN_ID} as ${KEYPAIR_NAME} on ${GRAPH_REGION} for ${READ_COUNT} reads into ${OUTPUT_URL}"
+echo "Running run ${RUN_ID} as ${KEYPAIR_NAME} on ${GRAPH_REGIONS[@]} for ${READ_COUNT} reads into ${OUTPUT_URL}"
 
 # Make sure we don't leave the cluster running or data laying around on exit.
 function clean_up() {
     set +e
-    if [[ "${REMOVE_JOBSTORE}" == "1" ]]; then
-        # Delete the Toil intermediates we could have used to restart the job
-        $PREFIX toil clean "${JOB_TREE_CONSTRUCT}"
-        $PREFIX toil clean "${JOB_TREE_SIM}"
-        $PREFIX toil clean "${JOB_TREE_MAPEVAL}"
-    fi
-    if [[ "${MANAGE_CLUSTER}" == "1" ]]; then
+    
+    # Delete the Toil intermediates we could have used to restart jobs, since
+    # we have a lot of Toil runs and no good way to restart just one
+    $PREFIX toil clean "${JOB_TREE_CONSTRUCT}"
+    $PREFIX toil clean "${JOB_TREE_SIM}"
+    $PREFIX toil clean "${JOB_TREE_MAPEVAL}"
+    
+    if [[ "${PERSISTENT_CLUSTER}" == "0" ]]; then
         # Destroy the cluster
-        $PREFIX toil destroy-cluster "${CLUSTER_NAME}" -z us-west-2a
+        destroy_cluster "${CLUSTER_NAME}"
+    else
+        echo "Leaving cluster ${CLUSTER_NAME} running!"
+        echo "Destroy with: toil destroy-cluster '${CLUSTER_NAME}' -z us-west-2a"
     fi
 }
 trap clean_up EXIT
 
-echo "Starting cluster ${CLUSTER_NAME}"
+echo "Using cluster ${CLUSTER_NAME}"
 echo "Destroy with: toil destroy-cluster '${CLUSTER_NAME}' -z us-west-2a"
 
-if [[ "${MANAGE_CLUSTER}" == "1" ]]; then
-    # Start up a cluster
-    TOIL_APPLIANCE_SELF="${TOIL_APPLIANCE_SELF}" $PREFIX toil launch-cluster "${CLUSTER_NAME}" --leaderNodeType=t2.medium -z us-west-2a "--keyPairName=${KEYPAIR_NAME}"
+if [ "${PERSISTENT_CLUSTER}" == "0" ] || ! cluster_exists "${CLUSTER_NAME}" ; then
+    # We need to start up a cluster, because we are using our own or we are using a nonexistent one.
+    start_cluster "${CLUSTER_NAME}" "${KEYPAIR_NAME}"
 fi
 
-# We need to manually install git to make pip + git work...
-$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" apt update
-$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" apt install git -y
-
-# Ignore the old virtualenv if re-using a cluster
-
-# For hot deployment to work, toil-vg needs to be in a virtualenv that can see the system Toil
-$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" virtualenv --system-site-packages venv
-
-# Install all the Python stuff we need at once and hope pip is smart enough to figure out mutually compatible dependencies
-$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/pip install \
-    pyyaml \
-    "${AWSCLI_PACKAGE}" \
-    numpy \
-    scipy \
-    scikit-learn \
-    "${TOIL_VG_PACKAGE}"
-   
 # We need the master's IP to make Mesos go
 MASTER_IP="$($PREFIX toil ssh-cluster --insecure --zone=us-west-2a --logOff "${CLUSTER_NAME}" hostname -i)"
 
 # Strip some garbage from MASTER_IP
 MASTER_IP="${MASTER_IP//[$'\t\r\n ']}"
 
-# Work out the Toil cluster options that we pass to each Toil/toil-vg run to point it at the cluster
-TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
+# Work out the Toil cluster options that we pass to each Toil/toil-vg run to
+# point it at the cluster. Having --defaultPreemptable makes jobs accept
+# preemptable nodes by default. But some jobs still demand non-preemptable
+# nodes. So we have some r3.8xlarge:0.85 (with a bit) and some r3.8xlarge (on
+# demand).
+TOIL_CLUSTER_OPTS=(--realTimeLogging --logDebug \
     --batchSystem mesos --provisioner=aws "--mesosMaster=${MASTER_IP}:5050" \
-    --nodeTypes=r3.8xlarge:0.85 --defaultPreemptable --maxNodes=${MAX_NODES} \
+    "--nodeTypes=${NODE_TYPES}" --defaultPreemptable "--maxNodes=${MAX_NODES}" "--minNodes=${MIN_NODES}" \
     --alphaPacking 2.0)
 
 
@@ -264,14 +303,14 @@ if ! aws s3 ls >/dev/null "${GRAPHS_URL}" ; then
         "$(url_to_store "${GRAPHS_URL}")" \
         --whole_genome_config \
         "${VG_DOCKER_OPTS[@]}" \
-        --vcf "${GRAPH_VCF_URL}" \
+        --vcf "${GRAPH_VCF_URLS[@]}" \
         --fasta "${GRAPH_FASTA_URL}" \
         --out_name "snp1kg-${REGION_NAME}" \
         --alt_paths \
         --control_sample "${SAMPLE_NAME}" \
         --haplo_sample "${SAMPLE_NAME}" \
-        --filter_samples "${SAMPLE_NAME}" \
-        --regions "${GRAPH_REGION}" \
+        "${FILTER_OPTS[@]}" \
+        --regions "${GRAPH_REGIONS[@]}" \
         --min_af "${MIN_AF}" \
         --primary \
         --gcsa_index \
@@ -280,8 +319,6 @@ if ! aws s3 ls >/dev/null "${GRAPHS_URL}" ; then
         --snarls_index \
         "${TOIL_CLUSTER_OPTS[@]}"
         
-    # Mark readable    
-    #$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/aws s3 sync --acl public-read "${OUTPUT_STORE_URL_CONSTRUCT}" "${OUTPUT_STORE_URL_CONSTRUCT}"
 fi
 
 # Now work out where in there these simulated reads belong
@@ -306,9 +343,6 @@ if ! aws s3 ls >/dev/null "${READS_URL}" ; then
         --fastq "${TRAINING_FASTQ}" \
         "${TOIL_CLUSTER_OPTS[@]}"
     
-    # Mark readable
-    #$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/aws s3 sync --acl public-read "${OUTPUT_STORE_URL_SIM}" "${OUTPUT_STORE_URL_SIM}"
-        
 fi
 
 # Now we have both the graphs and reads locally, but built in the cloud.
@@ -328,8 +362,9 @@ GAM_NAMES+=("snp1kg-minaf")
 GRAPH_URLS+=("${GRAPHS_URL}/primary")
 GAM_NAMES+=("primary")
 
+# TODO: Check if all the expected output graphs exist and only run if not.
+
 # Run one big mapeval run that considers all conditions we are interested in
-# TODO: Controls for no haplotype-aware-ness?
 $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg mapeval \
     "${JOB_TREE_MAPEVAL}" \
     "$(url_to_store "${OUTPUT_URL}")" \
@@ -343,15 +378,6 @@ $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin
     --fastq "${READS_URL}/sim.fq.gz" \
     --truth "${READS_URL}/true.pos" \
     "${TOIL_CLUSTER_OPTS[@]}"
-TOIL_ERROR="$?"
-    
-# Make sure the output is public
-#$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/aws s3 sync --acl public-read "${OUTPUT_STORE_URL_MAPEVAL}" "${OUTPUT_STORE_URL_MAPEVAL}"
-    
-if [[ "${TOIL_ERROR}" == "0" ]]; then
-    # Toil completed successfully.
-    # We will delete the job store
-    REMOVE_JOBSTORE=1
-fi
 
-# Cluster and tree will get cleaned u
+# Cluster (if desired) and trees will get cleaned up by the exit trap
+
