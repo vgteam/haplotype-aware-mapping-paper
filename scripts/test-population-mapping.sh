@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/vgteam/toil-vg.git@09ca41e27d33de60485a976abff5f36b5735b789#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@4600459f580e50bec9e2d74a8ec0c4e06a861efc#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -21,7 +21,7 @@ TOIL_APPLIANCE_SELF="quay.io/ucsc_cgl/toil:3.16.0a1.dev2290-c6d3a2a1677ba3928ad5
 AWSCLI_PACKAGE="awscli==1.14.70"
 
 # What vg should we use?
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.5.0-3152-g12bf9e2f-t156-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.5.0-3155-g4c4a1fd5-t158-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -175,15 +175,6 @@ function start_cluster() {
 
     # For hot deployment to work, toil-vg needs to be in a virtualenv that can see the system Toil
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" virtualenv --system-site-packages venv
-
-    # Install all the Python stuff we need at once and hope pip is smart enough to figure out mutually compatible dependencies
-    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/pip install \
-        pyyaml \
-        "${AWSCLI_PACKAGE}" \
-        numpy \
-        scipy \
-        scikit-learn \
-        "${TOIL_VG_PACKAGE}"
 }
 
 # Tear down the cluster with the given name
@@ -274,6 +265,16 @@ if [ "${PERSISTENT_CLUSTER}" == "0" ] || ! cluster_exists "${CLUSTER_NAME}" ; th
     start_cluster "${CLUSTER_NAME}" "${KEYPAIR_NAME}"
 fi
 
+# Install the right versions of all the Python stuff we need at once and hope
+# pip is smart enough to figure out mutually compatible dependencies
+$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/pip install --upgrade \
+    pyyaml \
+    "${AWSCLI_PACKAGE}" \
+    numpy \
+    scipy \
+    scikit-learn \
+    "${TOIL_VG_PACKAGE}"
+
 # We need the master's IP to make Mesos go
 MASTER_IP="$($PREFIX toil ssh-cluster --insecure --zone=us-west-2a --logOff "${CLUSTER_NAME}" hostname -i)"
 
@@ -285,7 +286,7 @@ MASTER_IP="${MASTER_IP//[$'\t\r\n ']}"
 # preemptable nodes by default. But some jobs still demand non-preemptable
 # nodes. So we have some r3.8xlarge:0.85 (with a bit) and some r3.8xlarge (on
 # demand).
-TOIL_CLUSTER_OPTS=(--realTimeLogging --logDebug \
+TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
     --batchSystem mesos --provisioner=aws "--mesosMaster=${MASTER_IP}:5050" \
     "--nodeTypes=${NODE_TYPES}" --defaultPreemptable "--maxNodes=${MAX_NODES}" "--minNodes=${MIN_NODES}" \
     --alphaPacking 2.0)
@@ -393,9 +394,11 @@ $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin
     --gam-names "${GAM_NAMES[@]}" \
     --multipath \
     --use-gbwt \
+    --strip-gbwt \
     --use-snarls \
     --fastq "${READS_URL}/sim.fq.gz" \
     --truth "${READS_URL}/true.pos" \
+    --plot-sets primary-mp-pe,primary-mp,snp1kg-mp-pe,snp1kg-mp,snp1kg-mp-pe-gbwt,snp1kg-mp-gbwt,snp1kg-minaf-mp-pe,snp1kg-minaf-mp \
     "${TOIL_CLUSTER_OPTS[@]}"
 
 # Cluster (if desired) and trees will get cleaned up by the exit trap
