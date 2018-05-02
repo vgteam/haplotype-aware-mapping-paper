@@ -295,7 +295,44 @@ TOIL_CLUSTER_OPTS=(--realTimeLogging --logDebug \
 
 # Now we are set up to do the actual experiment.
 
-if ! aws s3 ls >/dev/null "${GRAPHS_URL}" ; then
+# Decide what graphs to run
+GRAPH_URLS=()
+GAM_NAMES=()
+
+# We want the actual graph with its indexes (minus the sample under test)
+GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter")
+GAM_NAMES+=("snp1kg")
+
+GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}")
+GAM_NAMES+=("snp1kg-minaf")
+
+# We want a primary negative control
+GRAPH_URLS+=("${GRAPHS_URL}/primary")
+GAM_NAMES+=("primary")
+
+GRAPHS_READY=1
+for GRAPH_BASE_URL in "${GRAPH_URLS[@]}" ; do
+    # For each graph we want to run
+    for SUFFIX in ".vg" ".xg" ".gcsa" ".gcsa.lcp" ; do
+        # For each file requiredf for the graph
+        
+        if ! aws s3 ls >/dev/null "${GRAPH_BASE_URL}${SUFFIX}" ; then
+            # The graphs are not ready yet because this file is missing
+            echo "Need to generate graph file ${GRAPH_BASE_URL}${SUFFIX}"
+            GRAPHS_READY=0
+            break
+        fi
+    done
+    
+    if [[ "${GRAPHS_READY}" == "0" ]] ; then
+        break
+    fi
+
+done
+
+# TODO: Check if all the expected output graphs exist and only run if not.
+
+if [[ "${GRAPHS_READY}" != "1" ]] ; then
     # Graphs need to be generated
     
     # Construct the graphs
@@ -325,7 +362,7 @@ fi
 # Now work out where in there these simulated reads belong
 READS_URL="${GRAPHS_URL}/sim-${READ_SEED}-${READ_COUNT}-${READ_CHUNKS}"
 
-if ! aws s3 ls >/dev/null "${READS_URL}" ; then 
+if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then 
     # Now we need to simulate reads from the two haplotypes
     # This will make a "sim.gam"
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg sim \
@@ -345,25 +382,6 @@ if ! aws s3 ls >/dev/null "${READS_URL}" ; then
         "${TOIL_CLUSTER_OPTS[@]}"
     
 fi
-
-# Now we have both the graphs and reads locally, but built in the cloud.
-
-# Decide what graphs to run
-GRAPH_URLS=()
-GAM_NAMES=()
-
-# We want the actual graph with its indexes (minus the sample under test)
-GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter")
-GAM_NAMES+=("snp1kg")
-
-GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}")
-GAM_NAMES+=("snp1kg-minaf")
-
-# We want a primary negative control
-GRAPH_URLS+=("${GRAPHS_URL}/primary")
-GAM_NAMES+=("primary")
-
-# TODO: Check if all the expected output graphs exist and only run if not.
 
 # Run one big mapeval run that considers all conditions we are interested in
 $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg mapeval \
