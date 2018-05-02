@@ -25,14 +25,15 @@ VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.5.0-3152-g12bf9e2f-t156-run"
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
-NODE_TYPES="r3.8xlarge"
+# We need non-preemptable i3.4xlarge to get ~3.8TB storage available so the GCSA indexing jobs will have somewhere to run.
+NODE_TYPES="r3.8xlarge:0.85,i3.4xlarge"
 # How many nodes should we use at most per type?
 # Also comma-separated.
 # TODO: These don't sort right pending https://github.com/BD2KGenomics/toil/issues/2195
-MAX_NODES="6"
+MAX_NODES="2,2"
 # And at least per type? (Should probably be 0)
 # Also comma-separated.
-MIN_NODES="1"
+MIN_NODES="0,0"
 
 # What's our unique run ID? Should be lower-case and start with a letter for maximum compatibility.
 # See <https://gist.github.com/earthgecko/3089509>
