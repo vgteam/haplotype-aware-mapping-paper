@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@4600459f580e50bec9e2d74a8ec0c4e06a861efc#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@20d15d0a18ef46ec5ef49a13311362f2da4e56d9#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -21,7 +21,7 @@ TOIL_APPLIANCE_SELF="quay.io/ucsc_cgl/toil:3.16.0a1.dev2290-c6d3a2a1677ba3928ad5
 AWSCLI_PACKAGE="awscli==1.14.70"
 
 # What vg should we use?
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.5.0-3155-g4c4a1fd5-t158-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.5.0-3156-gfec77632-t159-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -398,7 +398,7 @@ $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin
     --use-snarls \
     --fastq "${READS_URL}/sim.fq.gz" \
     --truth "${READS_URL}/true.pos" \
-    --plot-sets primary-mp-pe,primary-mp,snp1kg-mp-pe,snp1kg-mp,snp1kg-mp-pe-gbwt,snp1kg-mp-gbwt,snp1kg-minaf-mp-pe,snp1kg-minaf-mp \
+    --plot-sets primary-mp-pe,primary-mp,snp1kg-mp-pe,snp1kg-mp,snp1kg-gbwt-mp-pe,snp1kg-gbwt-mp,snp1kg-minaf-mp-pe,snp1kg-minaf-mp \
     "${TOIL_CLUSTER_OPTS[@]}"
 
 # Cluster (if desired) and trees will get cleaned up by the exit trap
