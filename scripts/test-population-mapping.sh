@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@20d15d0a18ef46ec5ef49a13311362f2da4e56d9#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@a01a61dbdbd3cd3fbfa8a4fe78ca71847e55ed5c#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -21,7 +21,7 @@ TOIL_APPLIANCE_SELF="quay.io/ucsc_cgl/toil:3.16.0a1.dev2290-c6d3a2a1677ba3928ad5
 AWSCLI_PACKAGE="awscli==1.14.70"
 
 # What vg should we use?
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.5.0-3156-gfec77632-t159-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.5.0-3159-g4eabb269-t162-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -81,10 +81,11 @@ function url_to_store() {
 usage() {
     # Print usage to stderr
     exec 1>&2
-    printf "Usage: $0 [Options] KEYPAIR_NAME GRAPHS_URL OUTPUT_URL \n"
+    printf "Usage: $0 [Options] KEYPAIR_NAME GRAPHS_URL ALIGNMENTS_URL CALLS_URL \n"
     printf "\tKEYPAIR_NAME\tSSH keypair in Amazon us-west-2 region to use for cluster authentication\n"
     printf "\tGRAPHS_URL\tS3 URL where generated graphs, indexes, and reads should be cached\n"
-    printf "\tOUTPUT_URL\tS3 URL where output data (mapped reads and statistics) should be deposited\n"
+    printf "\tALIGNMENTS_URL\tS3 URL where mapped reads and statistics should be cached\n"
+    printf "\tCALLS_URL\tS3 URL where variant calls and statistics should be deposited\n"
     printf "Options:\n\n"
     printf "\t-d\tDo a dry run\n"
     printf "\t-p PACKAGE\tUse the given Python package specifier to install toil-vg.\n"
@@ -130,7 +131,7 @@ done
 
 shift $((OPTIND-1))
 
-if [[ "$#" -lt "3" ]]; then
+if [[ "$#" -lt "4" ]]; then
     # Too few arguments
     usage
 fi
@@ -139,7 +140,9 @@ KEYPAIR_NAME="${1}"
 shift
 GRAPHS_URL="${1}"
 shift
-OUTPUT_URL="${1}"
+ALIGNMENTS_URL="${1}"
+shift
+CALLS_URL="${1}"
 shift
 
 if [[ "$#" -gt "0" ]]; then
@@ -195,11 +198,17 @@ case "${INPUT_DATA_MODE}" in
         REGION_NAME="CHR21"
         # Define the contigs we are using
         GRAPH_CONTIGS=("21")
-        # Define the region to build the graph on, as contig[:start-end]
+        # And the offsets for calling on each of the contigs (0-based)
+        GRAPH_CONTIG_OFFSETS=("0")
+        # Define the region to build the graph on, as contig[:start-end], 1-based
+        # If a region is specified for any contig, we will need to convert this to
+        # BED, so a region must be specified for all contigs.
         GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}")
         # Define the VCF and FASTA basenames. We assume the VCF has a TBI.
-        GRAPH_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg19-CHR21.vcf.gz")
+        # We need to use one VCF only, so that vcfeval can use it as a truth.
+        GRAPH_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg19-CHR21.vcf.gz"
         GRAPH_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/CHR21.fa"
+        # Note that this is hg19 and not GRCh38
         ;;
     MHC)
         # Actually do a smaller test
@@ -207,8 +216,10 @@ case "${INPUT_DATA_MODE}" in
         READ_CHUNKS="2"
         REGION_NAME="MHC"
         GRAPH_CONTIGS=("6")
+        GRAPH_CONTIG_OFFSETS=("28510118")
         GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:28510119-33480577")
-        GRAPH_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-MHC.vcf.gz")
+        GRAPH_VCF_URL="ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr6_GRCh38_sites.20170504.vcf.gz"
+        # We had "s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-MHC.vcf.gz" but it is malformed
         GRAPH_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr6.fa.gz"
         ;;
     BRCA1)
@@ -217,8 +228,10 @@ case "${INPUT_DATA_MODE}" in
         READ_CHUNKS="1"
         REGION_NAME="BRCA1"
         GRAPH_CONTIGS=("17")
+        GRAPH_CONTIG_OFFSETS=("43044292")
         GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:43044293-43125483")
-        GRAPH_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-BRCA1.vcf.gz")
+        GRAPH_VCF_URL="ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr17_GRCh38.genotypes.20170504.vcf.gz"
+        # We had "s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-BRCA1.vcf.gz" but it is malformed
         GRAPH_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr17.fa.gz"
         ;;
     *)
@@ -234,8 +247,9 @@ JOB_TREE_BASE="aws:us-west-2:${RUN_ID}"
 JOB_TREE_CONSTRUCT="${JOB_TREE_BASE}-construct"
 JOB_TREE_SIM="${JOB_TREE_BASE}-sim"
 JOB_TREE_MAPEVAL="${JOB_TREE_BASE}-mapeval"
+JOB_TREE_CALLEVAL="${JOB_TREE_BASE}-calleval"
 
-echo "Running run ${RUN_ID} as ${KEYPAIR_NAME} on ${GRAPH_REGIONS[@]} for ${READ_COUNT} reads into ${OUTPUT_URL}"
+echo "Running run ${RUN_ID} as ${KEYPAIR_NAME} on ${GRAPH_REGIONS[@]} for ${READ_COUNT} reads into ${ALIGNMENTS_URL}"
 
 # Make sure we don't leave the cluster running or data laying around on exit.
 function clean_up() {
@@ -246,6 +260,7 @@ function clean_up() {
     $PREFIX toil clean "${JOB_TREE_CONSTRUCT}"
     $PREFIX toil clean "${JOB_TREE_SIM}"
     $PREFIX toil clean "${JOB_TREE_MAPEVAL}"
+    $PREFIX toil clean "${JOB_TREE_CALLEVAL}"
     
     if [[ "${PERSISTENT_CLUSTER}" == "0" ]]; then
         # Destroy the cluster
@@ -289,7 +304,7 @@ MASTER_IP="${MASTER_IP//[$'\t\r\n ']}"
 TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
     --batchSystem mesos --provisioner=aws "--mesosMaster=${MASTER_IP}:5050" \
     "--nodeTypes=${NODE_TYPES}" --defaultPreemptable "--maxNodes=${MAX_NODES}" "--minNodes=${MIN_NODES}" \
-    --alphaPacking 2.0)
+    --alphaPacking 2.0 --metrics)
 
 
 ########################################################################################################
@@ -311,6 +326,13 @@ GAM_NAMES+=("snp1kg-minaf")
 GRAPH_URLS+=("${GRAPHS_URL}/primary")
 GAM_NAMES+=("primary")
 
+# We also need to make sure that the sample-only VCF is generated, to be our truth VCF.
+# TODO: import an external truth VCF for when we do real data
+GRAPH_VCF_FILENAME="${GRAPH_VCF_URL##*/}"
+GRAPH_VCF_BASENAME="${GRAPH_VCF_FILENAME%.vcf.gz}"
+SAMPLE_ONLY_VCF_URL="${GRAPHS_URL}/${GRAPH_VCF_BASENAME}_${SAMPLE_NAME}.vcf.gz"
+
+# Check if all the expected output graphs exist and only run if not.
 GRAPHS_READY=1
 for GRAPH_BASE_URL in "${GRAPH_URLS[@]}" ; do
     # For each graph we want to run
@@ -328,10 +350,13 @@ for GRAPH_BASE_URL in "${GRAPH_URLS[@]}" ; do
     if [[ "${GRAPHS_READY}" == "0" ]] ; then
         break
     fi
-
 done
 
-# TODO: Check if all the expected output graphs exist and only run if not.
+if ! aws s3 ls >/dev/null "${SAMPLE_ONLY_VCF_URL}" ; then
+    echo "Need to generate VCF file ${SAMPLE_ONLY_VCF_URL}"
+    GRAPHS_READY=0
+fi
+
 
 if [[ "${GRAPHS_READY}" != "1" ]] ; then
     # Graphs need to be generated
@@ -342,7 +367,7 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         "$(url_to_store "${GRAPHS_URL}")" \
         --whole_genome_config \
         "${VG_DOCKER_OPTS[@]}" \
-        --vcf "${GRAPH_VCF_URLS[@]}" \
+        --vcf "${GRAPH_VCF_URL}" \
         --fasta "${GRAPH_FASTA_URL}" \
         --out_name "snp1kg-${REGION_NAME}" \
         --alt_paths \
@@ -384,22 +409,110 @@ if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then
     
 fi
 
-# Run one big mapeval run that considers all conditions we are interested in
-$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg mapeval \
-    "${JOB_TREE_MAPEVAL}" \
-    "$(url_to_store "${OUTPUT_URL}")" \
+# Work out what alignment condition GAM names we hope to generate, with tags
+CONDITION_NAMES=()
+# And what XGs go with them
+XG_URLS=()
+
+CONDITION_NAMES+=("primary-mp-pe")
+XG_URLS+=("${GRAPHS_URL}/primary.xg")
+
+CONDITION_NAMES+=("snp1kg-mp-pe")
+XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter.xg")
+
+CONDITION_NAMES+=("snp1kg-gbwt-mp-pe")
+XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter.xg")
+
+CONDITION_NAMES+=("snp1kg-minaf-mp-pe")
+XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}.xg")
+
+# This will hold the final GAM URLs
+GAM_URLS=()
+for CONDITION_NAME in "${CONDITION_NAMES[@]}" ; do
+    # We generate them form the condition names
+    GAM_URLS+=("${ALIGNMENTS_URL}/aligned-${CONDITION_NAME}_default.gam") 
+done
+
+# Check if all the expected output alignments exist and only run if not.
+ALIGNMENTS_READY=1
+for GAM_URL in "${GAM_URLS[@]}" ; do
+    if ! aws s3 ls >/dev/null "${GAM_URL}" ; then
+        # The alignments are not ready yet because this file is missing
+        echo "Need to generate alignment file ${GAM_URL}"
+        ALIGNMENTS_READY=0
+        break
+    fi
+done
+
+if [[ "${ALIGNMENTS_READY}" != "1" ]] ; then
+    
+    # Run one big mapeval run that considers all conditions we are interested in
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg mapeval \
+        "${JOB_TREE_MAPEVAL}" \
+        "$(url_to_store "${ALIGNMENTS_URL}")" \
+        --whole_genome_config \
+        "${VG_DOCKER_OPTS[@]}" \
+        --index-bases "${GRAPH_URLS[@]}" \
+        --gam-names "${GAM_NAMES[@]}" \
+        --multipath \
+        --use-gbwt \
+        --strip-gbwt \
+        --use-snarls \
+        --fastq "${READS_URL}/sim.fq.gz" \
+        --truth "${READS_URL}/true.pos" \
+        --plot-sets primary-mp-pe,primary-mp,snp1kg-mp-pe,snp1kg-mp,snp1kg-gbwt-mp-pe,snp1kg-gbwt-mp,snp1kg-minaf-mp-pe,snp1kg-minaf-mp \
+        "${TOIL_CLUSTER_OPTS[@]}"
+fi
+
+# Calleval is maybe going to need a BED file
+BED_LINES=()
+for GRAPH_REGION in "${GRAPH_REGIONS[@]}" ; do
+    # For each region
+    if echo "${GRAPH_REGION}" | grep ":" ; then
+        # If it isn't a whole contig, we need a BED line
+        # TODO: Validate that no other regions are whole contigs
+        
+        # Cut it up
+        REGION_CONTIG="$(echo ${GRAPH_REGION} | cut -f1 -d':')"
+        REGION_RANGE="$(echo ${GRAPH_REGION} | cut -f2 -d':')"
+        REGION_START="$(echo ${REGION_RANGE} | cut -f1 -d'-')"
+        REGION_END="$(echo ${REGION_RANGE} | cut -f2 -d'-')"
+        
+        # Convert to 0-based
+        ((REGION_START--))
+        ((REGION_END--))
+        
+        # Make a BED line
+        BED_LINES+=("$(printf "${REGION_CONTIG}\t${REGION_START}\t${REGION_END}")")
+    fi
+done
+
+# Upload the BED to the server in the silliest way possible
+TEMP_BED="./temp.bed"
+$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" truncate ${TEMP_BED} --size 0
+for BED_LINE in "${BED_LINES[@]}" ; do
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" bash -c "echo \"${BED_LINE}\" >${TEMP_BED}"
+done
+
+# Now do calleval
+$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg calleval \
+    "${JOB_TREE_CALLEVAL}" \
+    "$(url_to_store "${CALLS_URL}")" \
     --whole_genome_config \
     "${VG_DOCKER_OPTS[@]}" \
-    --index-bases "${GRAPH_URLS[@]}" \
-    --gam-names "${GAM_NAMES[@]}" \
-    --multipath \
-    --use-gbwt \
-    --strip-gbwt \
-    --use-snarls \
-    --fastq "${READS_URL}/sim.fq.gz" \
-    --truth "${READS_URL}/true.pos" \
-    --plot-sets primary-mp-pe,primary-mp,snp1kg-mp-pe,snp1kg-mp,snp1kg-gbwt-mp-pe,snp1kg-gbwt-mp,snp1kg-minaf-mp-pe,snp1kg-minaf-mp \
+    --gams "${GAM_URLS[@]}" \
+    --gam_names "${CONDITION_NAMES[@]}" \
+    --xg_paths "${XG_URLS[@]}" \
+    --chroms "${GRAPH_CONTIGS[@]}" \
+    --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
+    --vcfeval_fasta "${GRAPH_FASTA_URL}" \
+    --vcfeval_baseline "${SAMPLE_ONLY_VCF_URL}" \
+    --vcfeval_bed_regions "${TEMP_BED}" \
+    --clip_only \
+    --sample_name "${SAMPLE_NAME}" \
+    --call_and_genotype \
     "${TOIL_CLUSTER_OPTS[@]}"
+
 
 # Cluster (if desired) and trees will get cleaned up by the exit trap
 
