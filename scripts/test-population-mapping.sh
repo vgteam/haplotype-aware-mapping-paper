@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@a01a61dbdbd3cd3fbfa8a4fe78ca71847e55ed5c#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@a6931ec48f42158545269ac87dc5b21926e3cce0#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -25,15 +25,17 @@ VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.5.0-3159-g4eabb269-t162-run"
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
-# We need non-preemptable i3.4xlarge to get ~3.8TB storage available so the GCSA indexing jobs will have somewhere to run.
-NODE_TYPES="r3.8xlarge:0.85,i3.4xlarge"
+# We need non-preemptable i3.4xlarge at least to get ~3.8TB storage available so the GCSA indexing jobs will have somewhere to run.
+#NODE_TYPES="i3.8xlarge,i3.8xlarge:0.90"
+NODE_TYPES="i3.8xlarge:0.90"
 # How many nodes should we use at most per type?
 # Also comma-separated.
 # TODO: These don't sort right pending https://github.com/BD2KGenomics/toil/issues/2195
-MAX_NODES="2,2"
+# We can only get the limits right for preemptable vs. nonpreemptable for the same thing
+MAX_NODES="4"
 # And at least per type? (Should probably be 0)
 # Also comma-separated.
-MIN_NODES="0,0"
+MIN_NODES="0"
 
 # What's our unique run ID? Should be lower-case and start with a letter for maximum compatibility.
 # See <https://gist.github.com/earthgecko/3089509>
@@ -224,8 +226,8 @@ case "${INPUT_DATA_MODE}" in
         ;;
     BRCA1)
         # Do just BRCA1 and a very few reads
-        READ_COUNT="1000"
-        READ_CHUNKS="1"
+        READ_COUNT="20000"
+        READ_CHUNKS="2"
         REGION_NAME="BRCA1"
         GRAPH_CONTIGS=("17")
         GRAPH_CONTIG_OFFSETS=("43044292")
@@ -322,9 +324,19 @@ GAM_NAMES+=("snp1kg")
 GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}")
 GAM_NAMES+=("snp1kg-minaf")
 
-# We want a primary negative control
+# We want a primary control
 GRAPH_URLS+=("${GRAPHS_URL}/primary")
 GAM_NAMES+=("primary")
+
+# We want a positive control with just the right variants
+GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}")
+GAM_NAMES+=("pos-control")
+
+
+# We want a negative control with no right variants
+GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minus_${SAMPLE_NAME}")
+GAM_NAMES+=("neg-control")
+
 
 # We also need to make sure that the sample-only VCF is generated, to be our truth VCF.
 # TODO: import an external truth VCF for when we do real data
@@ -414,8 +426,14 @@ CONDITION_NAMES=()
 # And what XGs go with them
 XG_URLS=()
 
+# TODO: This is sort of duplicative with GRAPH_URLS and GAM_NAMES above.
+# But it is more specific/restrictive for just calling (i.e. we ignore single-ended).
+
 CONDITION_NAMES+=("primary-mp-pe")
 XG_URLS+=("${GRAPHS_URL}/primary.xg")
+
+CONDITION_NAMES+=("snp1kg-pe")
+XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter.xg")
 
 CONDITION_NAMES+=("snp1kg-mp-pe")
 XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter.xg")
@@ -425,6 +443,13 @@ XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter.xg")
 
 CONDITION_NAMES+=("snp1kg-minaf-mp-pe")
 XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}.xg")
+
+CONDITION_NAMES+=("pos-control-mp-pe")
+XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}.xg")
+
+CONDITION_NAMES+=("neg-control-mp-pe")
+XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minus_${SAMPLE_NAME}.xg")
+
 
 # This will hold the final GAM URLs
 GAM_URLS=()
@@ -444,6 +469,11 @@ for GAM_URL in "${GAM_URLS[@]}" ; do
     fi
 done
 
+# Also BWA
+# TODO: Is this the right output URL we will get?
+BAM_URLS=("${ALIGNMENTS_URL}/bwa-mem-pe.bam")
+BAM_NAMES=("bwa-pe")
+
 if [[ "${ALIGNMENTS_READY}" != "1" ]] ; then
     
     # Run one big mapeval run that considers all conditions we are interested in
@@ -458,9 +488,12 @@ if [[ "${ALIGNMENTS_READY}" != "1" ]] ; then
         --use-gbwt \
         --strip-gbwt \
         --use-snarls \
+        --bwa --fasta "${GRAPH_FASTA_URL}" \
         --fastq "${READS_URL}/sim.fq.gz" \
         --truth "${READS_URL}/true.pos" \
-        --plot-sets primary-mp-pe,primary-mp,snp1kg-mp-pe,snp1kg-mp,snp1kg-gbwt-mp-pe,snp1kg-gbwt-mp,snp1kg-minaf-mp-pe,snp1kg-minaf-mp \
+        --plot-sets \
+        "primary-mp-pe,primary-mp,snp1kg-mp-pe,snp1kg-mp,snp1kg-gbwt-mp-pe,snp1kg-gbwt-mp,snp1kg-minaf-mp-pe,snp1kg-minaf-mp,pos-control-mp-pe,pos-control-mp,neg-control-mp-pe,neg-control-mp" \
+        "bwa-mem-pe,bwa-mem,snp1kg-gbwt-mp-pe,snp1kg-gbwt-mp,snp1kg-pe,snp1kg" \
         "${TOIL_CLUSTER_OPTS[@]}"
 fi
 
@@ -487,12 +520,19 @@ for GRAPH_REGION in "${GRAPH_REGIONS[@]}" ; do
     fi
 done
 
-# Upload the BED to the server in the silliest way possible
-TEMP_BED="./temp.bed"
-$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" truncate ${TEMP_BED} --size 0
-for BED_LINE in "${BED_LINES[@]}" ; do
-    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" bash -c "echo \"${BED_LINE}\" >${TEMP_BED}"
-done
+# Collect the options we need to use to specify this bed
+BED_OPTS=()
+if [ ${#BED_LINES[@]} -ne 0 ] ; then
+    # Upload the BED to the server in the silliest way possible
+    TEMP_BED="./temp.bed"
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" truncate ${TEMP_BED} --size 0
+    for BED_LINE in "${BED_LINES[@]}" ; do
+        $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" bash -c "echo \"${BED_LINE}\" >${TEMP_BED}"
+    done
+
+    # Remember to use it
+    BED_OPTS+=(--vcfeval_bed_regions "${TEMP_BED}")
+fi
 
 # Now do calleval
 $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg calleval \
@@ -502,15 +542,20 @@ $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin
     "${VG_DOCKER_OPTS[@]}" \
     --gams "${GAM_URLS[@]}" \
     --gam_names "${CONDITION_NAMES[@]}" \
+    --bams "${BAM_URLS[@]}" \
+    --bam_names "${BAM_NAMES[@]}" \
     --xg_paths "${XG_URLS[@]}" \
     --chroms "${GRAPH_CONTIGS[@]}" \
     --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
     --vcfeval_fasta "${GRAPH_FASTA_URL}" \
     --vcfeval_baseline "${SAMPLE_ONLY_VCF_URL}" \
-    --vcfeval_bed_regions "${TEMP_BED}" \
+    "${BED_OPTS[@]}" \
     --clip_only \
     --sample_name "${SAMPLE_NAME}" \
     --call_and_genotype \
+    --plot_sets \
+        "primary-mp-pe-call,snp1kg-mp-pe-call,snp1kg-gbwt-mp-pe-call,snp1kg-minaf-mp-pe-call,pos-control-mp-pe-call,neg-control-mp-pe-call" \
+        "bwa-pe-fb,snp1kg-gbwt-mp-pe-call,snp1kg-pe-call" \
     "${TOIL_CLUSTER_OPTS[@]}"
 
 
