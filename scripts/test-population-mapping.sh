@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@a6931ec48f42158545269ac87dc5b21926e3cce0#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@1853153b3ba6a1ba9624726d6a8395242a66cb01#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -26,16 +26,16 @@ VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.5.0-3159-g4eabb269-t162-run"
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
 # We need non-preemptable i3.4xlarge at least to get ~3.8TB storage available so the GCSA indexing jobs will have somewhere to run.
-#NODE_TYPES="i3.8xlarge,i3.8xlarge:0.90"
-NODE_TYPES="i3.8xlarge:0.90"
+# And we also need more memory (?) than that so some of the later jobs will run.
+NODE_TYPES="i3.8xlarge,i3.8xlarge:0.90"
 # How many nodes should we use at most per type?
 # Also comma-separated.
 # TODO: These don't sort right pending https://github.com/BD2KGenomics/toil/issues/2195
 # We can only get the limits right for preemptable vs. nonpreemptable for the same thing
-MAX_NODES="4"
+MAX_NODES="4,4"
 # And at least per type? (Should probably be 0)
 # Also comma-separated.
-MIN_NODES="0"
+MIN_NODES="0,0"
 
 # What's our unique run ID? Should be lower-case and start with a letter for maximum compatibility.
 # See <https://gist.github.com/earthgecko/3089509>
@@ -211,6 +211,9 @@ case "${INPUT_DATA_MODE}" in
         GRAPH_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg19-CHR21.vcf.gz"
         GRAPH_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/CHR21.fa"
         # Note that this is hg19 and not GRCh38
+        # We will process an interleaved fastq of real reads and evaluate its variant calls too.
+        # This can be empty
+        REAL_FASTQ_URL=""
         ;;
     MHC)
         # Actually do a smaller test
@@ -223,6 +226,7 @@ case "${INPUT_DATA_MODE}" in
         GRAPH_VCF_URL="ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr6_GRCh38_sites.20170504.vcf.gz"
         # We had "s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-MHC.vcf.gz" but it is malformed
         GRAPH_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr6.fa.gz"
+        REAL_FASTQ_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/platinum_NA12878_MHC.fq.gz"
         ;;
     BRCA1)
         # Do just BRCA1 and a very few reads
@@ -235,6 +239,7 @@ case "${INPUT_DATA_MODE}" in
         GRAPH_VCF_URL="ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr17_GRCh38.genotypes.20170504.vcf.gz"
         # We had "s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-BRCA1.vcf.gz" but it is malformed
         GRAPH_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr17.fa.gz"
+        REAL_FASTQ_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/platinum_NA12878_BRCA1.fq.gz"
         ;;
     *)
         echo 1>&2 "Unknown input data set ${INPUT_DATA_MODE}"
@@ -252,6 +257,14 @@ JOB_TREE_MAPEVAL="${JOB_TREE_BASE}-mapeval"
 JOB_TREE_CALLEVAL="${JOB_TREE_BASE}-calleval"
 
 echo "Running run ${RUN_ID} as ${KEYPAIR_NAME} on ${GRAPH_REGIONS[@]} for ${READ_COUNT} reads into ${ALIGNMENTS_URL}"
+
+# Decide on sim and real alignment URLS
+SIM_ALIGNMENTS_URL="${ALIGNMENTS_URL}/sim"
+REAL_ALIGNMENTS_URL="${ALIGNMENTS_URL}/real"
+
+# And for calls
+SIM_CALLS_URL="${CALLS_URL}/sim"
+REAL_CALLS_URL="${CALLS_URL}/real"
 
 # Make sure we don't leave the cluster running or data laying around on exit.
 function clean_up() {
@@ -451,35 +464,35 @@ CONDITION_NAMES+=("neg-control-mp-pe")
 XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minus_${SAMPLE_NAME}.xg")
 
 
-# This will hold the final GAM URLs
-GAM_URLS=()
+# This will hold the final GAM URLs for simulated reads
+SIM_GAM_URLS=()
 for CONDITION_NAME in "${CONDITION_NAMES[@]}" ; do
-    # We generate them form the condition names
-    GAM_URLS+=("${ALIGNMENTS_URL}/aligned-${CONDITION_NAME}_default.gam") 
-done
-
-# Check if all the expected output alignments exist and only run if not.
-ALIGNMENTS_READY=1
-for GAM_URL in "${GAM_URLS[@]}" ; do
-    if ! aws s3 ls >/dev/null "${GAM_URL}" ; then
-        # The alignments are not ready yet because this file is missing
-        echo "Need to generate alignment file ${GAM_URL}"
-        ALIGNMENTS_READY=0
-        break
-    fi
+    # We generate them from the condition names
+    SIM_GAM_URLS+=("${SIM_ALIGNMENTS_URL}/aligned-${CONDITION_NAME}_default.gam") 
 done
 
 # Also BWA
 # TODO: Is this the right output URL we will get?
-BAM_URLS=("${ALIGNMENTS_URL}/bwa-mem-pe.bam")
+SIM_BAM_URLS=("${SIM_ALIGNMENTS_URL}/bwa-mem-pe.bam")
 BAM_NAMES=("bwa-pe")
 
-if [[ "${ALIGNMENTS_READY}" != "1" ]] ; then
+# Check if all the expected output alignments exist and only run if not.
+SIM_ALIGNMENTS_READY=1
+for ALIGNMENT_URL in "${SIM_GAM_URLS[@]}" "${SIM_BAM_URLS[@]}" ; do
+    if ! aws s3 ls >/dev/null "${ALIGNMENT_URL}" ; then
+        # The alignments are not ready yet because this file is missing
+        echo "Need to generate alignment file ${ALIGNMENT_URL}"
+        SIM_ALIGNMENTS_READY=0
+        break
+    fi
+done
+
+if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
     
     # Run one big mapeval run that considers all conditions we are interested in
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg mapeval \
         "${JOB_TREE_MAPEVAL}" \
-        "$(url_to_store "${ALIGNMENTS_URL}")" \
+        "$(url_to_store "${SIM_ALIGNMENTS_URL}")" \
         --whole_genome_config \
         "${VG_DOCKER_OPTS[@]}" \
         --index-bases "${GRAPH_URLS[@]}" \
@@ -495,6 +508,51 @@ if [[ "${ALIGNMENTS_READY}" != "1" ]] ; then
         "primary-mp-pe,primary-mp,snp1kg-mp-pe,snp1kg-mp,snp1kg-gbwt-mp-pe,snp1kg-gbwt-mp,snp1kg-minaf-mp-pe,snp1kg-minaf-mp,pos-control-mp-pe,pos-control-mp,neg-control-mp-pe,neg-control-mp" \
         "bwa-mem-pe,bwa-mem,snp1kg-gbwt-mp-pe,snp1kg-gbwt-mp,snp1kg-pe,snp1kg" \
         "${TOIL_CLUSTER_OPTS[@]}"
+fi
+
+if [ ! -z "${REAL_FASTQ_URL}" ] ; then
+    # We can also do alignments of real data
+
+    # This will hold the final GAM URLs for real reads
+    REAL_GAM_URLS=()
+    for CONDITION_NAME in "${CONDITION_NAMES[@]}" ; do
+        # We generate them from the condition names
+        REAL_GAM_URLS+=("${REAL_ALIGNMENTS_URL}/aligned-${CONDITION_NAME}_default.gam") 
+    done
+
+    # And the BAM URLs
+    REAL_BAM_URLS=("${REAL_ALIGNMENTS_URL}/bwa-mem-pe.bam")
+
+    # Make sure they exist
+    REAL_ALIGNMENTS_READY=1
+    for ALIGNMENT_URL in "${REAL_GAM_URLS[@]}" "${REAL_BAM_URLS[@]}" ; do
+        if ! aws s3 ls >/dev/null "${ALIGNMENT_URL}" ; then
+            # The alignments are not ready yet because this file is missing
+            echo "Need to generate alignment file ${ALIGNMENT_URL}"
+            REAL_ALIGNMENTS_READY=0
+            break
+        fi
+    done
+
+    if [[ "${REAL_ALIGNMENTS_READY}" != "1" ]] ; then
+    
+        # Run a mapeval run just to map the real reads, under all conditions
+        $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg mapeval \
+            "${JOB_TREE_MAPEVAL}" \
+            "$(url_to_store "${REAL_ALIGNMENTS_URL}")" \
+            --whole_genome_config \
+            "${VG_DOCKER_OPTS[@]}" \
+            --index-bases "${GRAPH_URLS[@]}" \
+            --gam-names "${GAM_NAMES[@]}" \
+            --multipath \
+            --use-gbwt \
+            --strip-gbwt \
+            --use-snarls \
+            --bwa --fasta "${GRAPH_FASTA_URL}" \
+            --fastq "${REAL_FASTQ_URL}" \
+            --skip-eval \
+            "${TOIL_CLUSTER_OPTS[@]}"
+    fi
 fi
 
 # Calleval is maybe going to need a BED file
@@ -534,29 +592,76 @@ if [ ${#BED_LINES[@]} -ne 0 ] ; then
     BED_OPTS+=(--vcfeval_bed_regions "${TEMP_BED}")
 fi
 
-# Now do calleval
-$PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg calleval \
-    "${JOB_TREE_CALLEVAL}" \
-    "$(url_to_store "${CALLS_URL}")" \
-    --whole_genome_config \
-    "${VG_DOCKER_OPTS[@]}" \
-    --gams "${GAM_URLS[@]}" \
-    --gam_names "${CONDITION_NAMES[@]}" \
-    --bams "${BAM_URLS[@]}" \
-    --bam_names "${BAM_NAMES[@]}" \
-    --xg_paths "${XG_URLS[@]}" \
-    --chroms "${GRAPH_CONTIGS[@]}" \
-    --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
-    --vcfeval_fasta "${GRAPH_FASTA_URL}" \
-    --vcfeval_baseline "${SAMPLE_ONLY_VCF_URL}" \
-    "${BED_OPTS[@]}" \
-    --clip_only \
-    --sample_name "${SAMPLE_NAME}" \
-    --call_and_genotype \
-    --plot_sets \
-        "primary-mp-pe-call,snp1kg-mp-pe-call,snp1kg-gbwt-mp-pe-call,snp1kg-minaf-mp-pe-call,pos-control-mp-pe-call,neg-control-mp-pe-call" \
-        "bwa-pe-fb,snp1kg-gbwt-mp-pe-call,snp1kg-pe-call" \
-    "${TOIL_CLUSTER_OPTS[@]}"
+# Now the sim calls
+SIM_CALLS_READY=1
+if ! aws s3 ls >/dev/null "${SIM_CALLS_URL}/plots/roc-weighted.svg" ; then
+    # Use just this one file as a marker of calleval done-ness.
+    # TODO: use other files/VCFs.
+    SIM_CALLS_READY=0
+fi
+
+if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg calleval \
+        "${JOB_TREE_CALLEVAL}" \
+        "$(url_to_store "${SIM_CALLS_URL}")" \
+        --whole_genome_config \
+        "${VG_DOCKER_OPTS[@]}" \
+        --gams "${SIM_GAM_URLS[@]}" \
+        --gam_names "${CONDITION_NAMES[@]}" \
+        --bams "${SIM_BAM_URLS[@]}" \
+        --bam_names "${BAM_NAMES[@]}" \
+        --xg_paths "${XG_URLS[@]}" \
+        --chroms "${GRAPH_CONTIGS[@]}" \
+        --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
+        --vcfeval_fasta "${GRAPH_FASTA_URL}" \
+        --vcfeval_baseline "${SAMPLE_ONLY_VCF_URL}" \
+        "${BED_OPTS[@]}" \
+        --clip_only \
+        --sample_name "${SAMPLE_NAME}" \
+        --call_and_genotype \
+        --plot_sets \
+            "primary-mp-pe-call,snp1kg-mp-pe-call,snp1kg-gbwt-mp-pe-call,snp1kg-minaf-mp-pe-call,pos-control-mp-pe-call,neg-control-mp-pe-call" \
+            "bwa-pe-fb,snp1kg-gbwt-mp-pe-call,snp1kg-pe-call" \
+        "${TOIL_CLUSTER_OPTS[@]}"
+fi
+
+if [ ! -z "${REAL_FASTQ_URL}" ] ; then
+    # Now the real calls if applicable
+
+    # Now the sim calls
+    REAL_CALLS_READY=1
+    if ! aws s3 ls >/dev/null "${REAL_CALLS_URL}/plots/roc-weighted.svg" ; then
+        # Use just this one file as a marker of calleval done-ness.
+        # TODO: use other files/VCFs.
+        REAL_CALLS_READY=0
+    fi
+
+    if [[ "${REAL_CALLS_READY}" != "1" ]] ; then
+        $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg calleval \
+            "${JOB_TREE_CALLEVAL}" \
+            "$(url_to_store "${REAL_CALLS_URL}")" \
+            --whole_genome_config \
+            "${VG_DOCKER_OPTS[@]}" \
+            --gams "${REAL_GAM_URLS[@]}" \
+            --gam_names "${CONDITION_NAMES[@]}" \
+            --bams "${REAL_BAM_URLS[@]}" \
+            --bam_names "${BAM_NAMES[@]}" \
+            --xg_paths "${XG_URLS[@]}" \
+            --chroms "${GRAPH_CONTIGS[@]}" \
+            --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
+            --vcfeval_fasta "${GRAPH_FASTA_URL}" \
+            --vcfeval_baseline "${SAMPLE_ONLY_VCF_URL}" \
+            "${BED_OPTS[@]}" \
+            --clip_only \
+            --sample_name "${SAMPLE_NAME}" \
+            --call_and_genotype \
+            --plot_sets \
+                "primary-mp-pe-call,snp1kg-mp-pe-call,snp1kg-gbwt-mp-pe-call,snp1kg-minaf-mp-pe-call,pos-control-mp-pe-call,neg-control-mp-pe-call" \
+                "bwa-pe-fb,snp1kg-gbwt-mp-pe-call,snp1kg-pe-call" \
+            "${TOIL_CLUSTER_OPTS[@]}"
+    fi
+
+fi
 
 
 # Cluster (if desired) and trees will get cleaned up by the exit trap
