@@ -1,2 +1,2 @@
-# population-mapping-paper
-Scripts for the population-aware mapping paper project
+# Haplotype-Aware Mapping Paper
+Scripts for the haplotype-aware mapping paper project
