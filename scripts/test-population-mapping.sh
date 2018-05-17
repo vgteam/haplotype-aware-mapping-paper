@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@1853153b3ba6a1ba9624726d6a8395242a66cb01#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@03658b987afd4a3993c6b35fbff9720c546dbd62#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -21,7 +21,7 @@ TOIL_APPLIANCE_SELF="quay.io/ucsc_cgl/toil:3.16.0a1.dev2290-c6d3a2a1677ba3928ad5
 AWSCLI_PACKAGE="awscli==1.14.70"
 
 # What vg should we use?
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.5.0-3159-g4eabb269-t162-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.7.0-73-gfaeaf116-t165-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -32,7 +32,7 @@ NODE_TYPES="i3.8xlarge,i3.8xlarge:0.90"
 # Also comma-separated.
 # TODO: These don't sort right pending https://github.com/BD2KGenomics/toil/issues/2195
 # We can only get the limits right for preemptable vs. nonpreemptable for the same thing
-MAX_NODES="4,4"
+MAX_NODES="8,8"
 # And at least per type? (Should probably be 0)
 # Also comma-separated.
 MIN_NODES="0,0"
@@ -589,7 +589,7 @@ if [ ${#BED_LINES[@]} -ne 0 ] ; then
     done
 
     # Remember to use it
-    BED_OPTS+=(--vcfeval_bed_regions "${TEMP_BED}")
+    BED_OPTS+=(--vcfeval_bed_regions "${TEMP_BED}" --clip_only)
 fi
 
 # Now the sim calls
@@ -599,6 +599,8 @@ if ! aws s3 ls >/dev/null "${SIM_CALLS_URL}/plots/roc-weighted.svg" ; then
     # TODO: use other files/VCFs.
     SIM_CALLS_READY=0
 fi
+
+# It would be nice if we could run genotype, but it is extremely slow (~2.5 hours per chunk on chr21 sim data)
 
 if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg calleval \
@@ -616,9 +618,7 @@ if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
         --vcfeval_fasta "${GRAPH_FASTA_URL}" \
         --vcfeval_baseline "${SAMPLE_ONLY_VCF_URL}" \
         "${BED_OPTS[@]}" \
-        --clip_only \
         --sample_name "${SAMPLE_NAME}" \
-        --call_and_genotype \
         --plot_sets \
             "primary-mp-pe-call,snp1kg-mp-pe-call,snp1kg-gbwt-mp-pe-call,snp1kg-minaf-mp-pe-call,pos-control-mp-pe-call,neg-control-mp-pe-call" \
             "bwa-pe-fb,snp1kg-gbwt-mp-pe-call,snp1kg-pe-call" \
@@ -652,9 +652,7 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
             --vcfeval_fasta "${GRAPH_FASTA_URL}" \
             --vcfeval_baseline "${SAMPLE_ONLY_VCF_URL}" \
             "${BED_OPTS[@]}" \
-            --clip_only \
             --sample_name "${SAMPLE_NAME}" \
-            --call_and_genotype \
             --plot_sets \
                 "primary-mp-pe-call,snp1kg-mp-pe-call,snp1kg-gbwt-mp-pe-call,snp1kg-minaf-mp-pe-call,pos-control-mp-pe-call,neg-control-mp-pe-call" \
                 "bwa-pe-fb,snp1kg-gbwt-mp-pe-call,snp1kg-pe-call" \
