@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@88377cfc42e76415806688d2b5a709c0b72b5c63#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@1f2d99243b1de3d8b6b9ddbbb48ab855213ebdd3#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -640,6 +640,7 @@ if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
         --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
         --vcfeval_fasta "${GRAPH_FASTA_URL}" \
         --vcfeval_baseline "${SAMPLE_ONLY_VCF_URL}" \
+        --call \
         "${BED_OPTS[@]}" \
         --sample_name "${SAMPLE_NAME}" \
         --plot_sets \
@@ -674,6 +675,7 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
             --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
             --vcfeval_fasta "${GRAPH_FASTA_URL}" \
             --vcfeval_baseline "${SAMPLE_ONLY_VCF_URL}" \
+            --call \
             "${BED_OPTS[@]}" \
             --sample_name "${SAMPLE_NAME}" \
             --plot_sets \
