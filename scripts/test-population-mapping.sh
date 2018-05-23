@@ -69,7 +69,7 @@ FILTER_OPTS=("--filter_ceph" "--filter_samples" "${SAMPLE_NAME}")
 
 # What min allele frequency limits do we use?
 # These come out as minaf, minaf1, minaf2, minaf3 (number = # of zeroes)
-MIN_AFS=("0.0335570469", "0.1", "0.01", "0.001")
+MIN_AFS=("0.0335570469" "0.1" "0.01" "0.001")
 
 # Put this in front of commands to do or not do them, depending on if we are doing a dry run or not
 PREFIX=""
@@ -204,14 +204,21 @@ case "${INPUT_DATA_MODE}" in
         # And the offsets for calling on each of the contigs (0-based)
         GRAPH_CONTIG_OFFSETS=("0")
         # Define the region to build the graph on, as contig[:start-end], 1-based
-        # If a region is specified for any contig, we will need to convert this to
+        # If a non-whole-contig region is specified for any contig, we will need to convert this to
         # BED, so a region must be specified for all contigs.
         GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}")
         # Define the VCF and FASTA basenames. We assume the VCF has a TBI.
-        # We need to use one VCF only, so that vcfeval can use it as a truth.
-        GRAPH_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg19-CHR21.vcf.gz"
-        GRAPH_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/CHR21.fa"
         # Note that this is hg19 and not GRCh38
+        CONSTRUCT_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg19-CHR21.vcf.gz"
+        CONSTRUCT_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/CHR21.fa"
+        # What FASTA should we use for BWA mapping? It needs to have just the selected regions cut out.
+        MAPPING_FASTA_URL="${CONSTRUCT_FASTA_URL}"
+        # What VCF should we use for the truth?
+        EVALUATION_VCF_URL="${CONSTRUCT_VCF_URL}"
+        # And what high confidence regions should we use there?
+        # This can't be specified if we are using regions on GRAPH_REGIONS
+        EVALUATION_BED_URL=""
+        
         # We will process an interleaved fastq of real reads and evaluate its variant calls too.
         # This can be empty
         REAL_FASTQ_URL=""
@@ -224,9 +231,12 @@ case "${INPUT_DATA_MODE}" in
         GRAPH_CONTIGS=("6")
         GRAPH_CONTIG_OFFSETS=("28510118")
         GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:28510119-33480577")
-        GRAPH_VCF_URL="ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr6_GRCh38_sites.20170504.vcf.gz"
+        CONSTRUCT_VCF_URL="ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr6_GRCh38_sites.20170504.vcf.gz"
         # We had "s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-MHC.vcf.gz" but it is malformed
-        GRAPH_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr6.fa.gz"
+        CONSTRUCT_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr6.fa.gz"
+        MAPPING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/MHC.fa"
+        EVALUATION_VCF_URL="${CONSTRUCT_VCF_URL}"
+        EVALUATION_BED_URL=""
         REAL_FASTQ_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/platinum_NA12878_MHC.fq.gz"
         ;;
     BRCA1)
@@ -237,10 +247,32 @@ case "${INPUT_DATA_MODE}" in
         GRAPH_CONTIGS=("17")
         GRAPH_CONTIG_OFFSETS=("43044292")
         GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:43044293-43125483")
-        GRAPH_VCF_URL="ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr17_GRCh38.genotypes.20170504.vcf.gz"
+        CONSTRUCT_VCF_URL="ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr17_GRCh38.genotypes.20170504.vcf.gz"
         # We had "s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-BRCA1.vcf.gz" but it is malformed
-        GRAPH_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr17.fa.gz"
+        CONSTRUCT_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr17.fa.gz"
+        MAPPING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/BRCA1.fa"
+        EVALUATION_VCF_URL="${CONSTRUCT_VCF_URL}"
+        EVALUATION_BED_URL=""
         REAL_FASTQ_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/platinum_NA12878_BRCA1.fq.gz"
+        ;;
+    WG37)
+        # Do 10m pairs on the whole genome (GRCh38)
+        # TODO: Compose a whole genome 38 VCF
+        READ_COUNT="10000000"
+        READ_CHUNKS="32"
+        REGION_NAME="WG37"
+        # We do all the chroms except Y because NA12878 is XX AFAIK
+        GRAPH_CONTIGS=("1" "2" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "13" "14" "15" "16" "17" "18" "19" "20" "21" "22" "X")
+        GRAPH_CONTIG_OFFSETS=("0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0")
+        GRAPH_REGIONS=("${GRAPH_CONTIGS[@]}")
+        CONSTRUCT_VCF_URL="s3://glennhickey/1kg-data/ALL.wgs.phase3_shapeit2_mvncall_integrated_v5b.20130502.sites.vcf.gz"
+        CONSTRUCT_FASTA_URL="s3://glennhickey/1kg-data/hs37d5.fa.gz"
+        MAPPING_FASTA_URL="${CONSTRUCT_FASTA_URL}"
+        # Skip calleval for now.
+        EVALUATION_VCF_URL=""
+        EVALUATION_BED_URL=""
+        # TODO: find a real FASTQ for whole genomes
+        REAL_FASTQ_URL=""
         ;;
     *)
         echo 1>&2 "Unknown input data set ${INPUT_DATA_MODE}"
@@ -354,7 +386,7 @@ GAM_NAMES+=("neg-control")
 
 # We also need to make sure that the sample-only VCF is generated, to be our truth VCF.
 # TODO: import an external truth VCF for when we do real data
-GRAPH_VCF_FILENAME="${GRAPH_VCF_URL##*/}"
+GRAPH_VCF_FILENAME="${CONSTRUCT_VCF_URL##*/}"
 GRAPH_VCF_BASENAME="${GRAPH_VCF_FILENAME%.vcf.gz}"
 SAMPLE_ONLY_VCF_URL="${GRAPHS_URL}/${GRAPH_VCF_BASENAME}_${SAMPLE_NAME}.vcf.gz"
 
@@ -393,8 +425,8 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         "$(url_to_store "${GRAPHS_URL}")" \
         --whole_genome_config \
         "${VG_DOCKER_OPTS[@]}" \
-        --vcf "${GRAPH_VCF_URL}" \
-        --fasta "${GRAPH_FASTA_URL}" \
+        --vcf "${CONSTRUCT_VCF_URL}" \
+        --fasta "${CONSTRUCT_FASTA_URL}" \
         --out_name "snp1kg-${REGION_NAME}" \
         --alt_paths \
         --control_sample "${SAMPLE_NAME}" \
@@ -517,7 +549,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         --strip-gbwt \
         --use-snarls \
         --surject \
-        --bwa --fasta "${GRAPH_FASTA_URL}" \
+        --bwa --fasta "${CONSTRUCT_FASTA_URL}" \
         --fastq "${READS_URL}/sim.fq.gz" \
         --truth "${READS_URL}/true.pos" \
         --plot-sets \
@@ -571,48 +603,60 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
             --strip-gbwt \
             --use-snarls \
             --surject \
-            --bwa --fasta "${GRAPH_FASTA_URL}" \
+            --bwa --fasta "${CONSTRUCT_FASTA_URL}" \
             --fastq "${REAL_FASTQ_URL}" \
             --skip-eval \
             "${TOIL_CLUSTER_OPTS[@]}"
     fi
 fi
 
-# Calleval is maybe going to need a BED file
-BED_LINES=()
-for GRAPH_REGION in "${GRAPH_REGIONS[@]}" ; do
-    # For each region
-    if echo "${GRAPH_REGION}" | grep ":" ; then
-        # If it isn't a whole contig, we need a BED line
-        # TODO: Validate that no other regions are whole contigs
-        
-        # Cut it up
-        REGION_CONTIG="$(echo ${GRAPH_REGION} | cut -f1 -d':')"
-        REGION_RANGE="$(echo ${GRAPH_REGION} | cut -f2 -d':')"
-        REGION_START="$(echo ${REGION_RANGE} | cut -f1 -d'-')"
-        REGION_END="$(echo ${REGION_RANGE} | cut -f2 -d'-')"
-        
-        # Convert to 0-based
-        ((REGION_START--))
-        ((REGION_END--))
-        
-        # Make a BED line
-        BED_LINES+=("$(printf "${REGION_CONTIG}\t${REGION_START}\t${REGION_END}")")
-    fi
-done
+if [[ -z "${EVALUATION_VCF_URL}" ]] ; then
+    # Don't calleval without the truth VCF
+    echo "No truth VCF; skipping calleval."
+    exit 0
+fi
 
-# Collect the options we need to use to specify this bed
-BED_OPTS=()
-if [ ${#BED_LINES[@]} -ne 0 ] ; then
-    # Upload the BED to the server in the silliest way possible
-    TEMP_BED="./temp.bed"
-    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" truncate ${TEMP_BED} --size 0
-    for BED_LINE in "${BED_LINES[@]}" ; do
-        $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" bash -c "echo \"${BED_LINE}\" >${TEMP_BED}"
+if [[ -z "${EVALUATION_BED_URL}" ]] ; then
+    # No high confidence bed specified. So we can use a generated region bed to restrict to e.g. BRCA1.
+
+    BED_LINES=()
+    for GRAPH_REGION in "${GRAPH_REGIONS[@]}" ; do
+        # For each region
+        if echo "${GRAPH_REGION}" | grep ":" ; then
+            # If it isn't a whole contig, we need a BED line
+            # TODO: Validate that no other regions are whole contigs
+            
+            # Cut it up
+            REGION_CONTIG="$(echo ${GRAPH_REGION} | cut -f1 -d':')"
+            REGION_RANGE="$(echo ${GRAPH_REGION} | cut -f2 -d':')"
+            REGION_START="$(echo ${REGION_RANGE} | cut -f1 -d'-')"
+            REGION_END="$(echo ${REGION_RANGE} | cut -f2 -d'-')"
+            
+            # Convert to 0-based
+            ((REGION_START--))
+            ((REGION_END--))
+            
+            # Make a BED line
+            BED_LINES+=("$(printf "${REGION_CONTIG}\t${REGION_START}\t${REGION_END}")")
+        fi
     done
 
-    # Remember to use it
-    BED_OPTS+=(--vcfeval_bed_regions "${TEMP_BED}" --clip_only)
+    # Collect the options we need to use to specify this bed
+    BED_OPTS=()
+    if [ ${#BED_LINES[@]} -ne 0 ] ; then
+        # Upload the BED to the server in the silliest way possible
+        TEMP_BED="./temp.bed"
+        $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" truncate ${TEMP_BED} --size 0
+        for BED_LINE in "${BED_LINES[@]}" ; do
+            $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" bash -c "echo \"${BED_LINE}\" >${TEMP_BED}"
+        done
+
+        # Remember to use it
+        BED_OPTS+=(--vcfeval_bed_regions "${TEMP_BED}" --clip_only)
+    fi
+else
+    # We have a bed we need to use for the high-confidence regions
+    BED_OPTS+=(--vcfeval_bed_regions "${EVALUATION_BED_URL}" --clip_only)
 fi
 
 # Now the sim calls
@@ -638,7 +682,7 @@ if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
         --xg_paths "${XG_URLS[@]}" \
         --chroms "${GRAPH_CONTIGS[@]}" \
         --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
-        --vcfeval_fasta "${GRAPH_FASTA_URL}" \
+        --vcfeval_fasta "${CONSTRUCT_FASTA_URL}" \
         --vcfeval_baseline "${SAMPLE_ONLY_VCF_URL}" \
         --call \
         "${BED_OPTS[@]}" \
@@ -673,7 +717,7 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
             --xg_paths "${XG_URLS[@]}" \
             --chroms "${GRAPH_CONTIGS[@]}" \
             --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
-            --vcfeval_fasta "${GRAPH_FASTA_URL}" \
+            --vcfeval_fasta "${CONSTRUCT_FASTA_URL}" \
             --vcfeval_baseline "${SAMPLE_ONLY_VCF_URL}" \
             --call \
             "${BED_OPTS[@]}" \
