@@ -222,9 +222,10 @@ case "${INPUT_DATA_MODE}" in
         # This can't be specified if we are using regions on GRAPH_REGIONS
         EVALUATION_BED_URL=""
         
-        # We will process an interleaved fastq of real reads and evaluate its variant calls too.
-        # This can be empty
+        # We will process an interleaved fastq or a BAM of real reads and evaluate its variant calls too.
+        # This can be empty, but these are mutually exclusive
         REAL_FASTQ_URL=""
+        REAL_REALIGN_BAM_URL=""
         ;;
     MHC)
         # Actually do a smaller test
@@ -242,6 +243,7 @@ case "${INPUT_DATA_MODE}" in
         EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         EVALUATION_BED_URL=""
         REAL_FASTQ_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/platinum_NA12878_MHC.fq.gz"
+        REAL_REALIGN_BAM_URL=""
         ;;
     BRCA1)
         # Do just BRCA1 and a very few reads
@@ -259,26 +261,34 @@ case "${INPUT_DATA_MODE}" in
         EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         EVALUATION_BED_URL=""
         REAL_FASTQ_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/platinum_NA12878_BRCA1.fq.gz"
+        REAL_REALIGN_BAM_URL=""
         ;;
-    WG37)
+    WG38)
         # Do 10m pairs on the whole genome (GRCh38)
         # TODO: Compose a whole genome 38 VCF
         READ_COUNT="10000000"
         READ_CHUNKS="32"
-        REGION_NAME="WG37"
+        REGION_NAME="WG38"
         # We do all the chroms except Y because NA12878 is XX AFAIK
         GRAPH_CONTIGS=("1" "2" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "13" "14" "15" "16" "17" "18" "19" "20" "21" "22" "X")
         GRAPH_CONTIG_OFFSETS=("0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0")
         GRAPH_REGIONS=("${GRAPH_CONTIGS[@]}")
-        CONSTRUCT_VCF_URLS=("s3://glennhickey/1kg-data/ALL.wgs.phase3_shapeit2_mvncall_integrated_v5b.20130502.sites.vcf.gz")
-        CONSTRUCT_FASTA_URLS=("s3://glennhickey/1kg-data/hs37d5.fa.gz")
+        CONSTRUCT_VCF_URLS=()
+        for CONTIG in "${GRAPH_CONTIGS[@]}" ; do
+            # Use the per-chromosome VCFs from 1KG
+            CONSTRUCT_VCF_URLS+=("http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr${CONTIG}_GRCh38.genotypes.20170504.vcf.gz")
+            # Use the FASTAs from 
+        done
+        # I built this by stripping the "chr" off of ftp://ftp.1000genomes.ebi.ac.uk//vol1/ftp/technical/reference/GRCh38_reference_genome/GRCh38_full_analysis_set_plus_decoy_hla.fa
+        # TODO: Won't that cause trouble with the presence/absence of decoys in the graph being confounded with mapper?
+        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/GRCh38.fa.gz")
         MAPPING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
-        # Skip calleval for now.
-        EVALUATION_VCF_URL=""
+        # Evaluate against Platinum Genomes/GIAB hybrid
+        EVALUATION_VCF_URL="ftp://platgene_ro:@ussd-ftp.illumina.com/2017-1.0/hg38/hybrid/hg38.hybrid.vcf.gz"
         EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
-        EVALUATION_BED_URL=""
-        # TODO: find a real FASTQ for whole genomes
+        EVALUATION_BED_URL="ftp://platgene_ro:@ussd-ftp.illumina.com/2017-1.0/hg38/hybrid/hg38.hybrid.bed.gz"
         REAL_FASTQ_URL=""
+        REAL_REALIGN_BAM_URL="ftp://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/NA12878/NIST_NA12878_HG001_HiSeq_300x/RMNISTHS_30xdownsample.bam"
         ;;
     *)
         echo 1>&2 "Unknown input data set ${INPUT_DATA_MODE}"
@@ -553,7 +563,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         "${TOIL_CLUSTER_OPTS[@]}"
 fi
 
-if [ ! -z "${REAL_FASTQ_URL}" ] ; then
+if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
     # We can also do alignments of real data
 
     # This will hold the final GAM URLs for real reads
@@ -580,6 +590,15 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
             break
         fi
     done
+    
+    # Work out how to send the input reads
+    if [[ ! -z "${REAL_FASTQ_URL}" ]] ; then
+        # Data is coming in as FASTQ
+        DATA_OPTS=(--fastq "${REAL_FASTQ_URL}")
+    else
+        # Data is coming in as BAM
+        DATA_OPTS=(--bam_input_reads "${REAL_REALIGN_BAM_URL}")
+    fi
 
     if [[ "${REAL_ALIGNMENTS_READY}" != "1" ]] ; then
     
@@ -597,7 +616,7 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
             --use-snarls \
             --surject \
             --bwa --fasta "${MAPPING_FASTA_URL}" \
-            --fastq "${REAL_FASTQ_URL}" \
+            "${DATA_OPTS[@]}" \
             --skip-eval \
             "${TOIL_CLUSTER_OPTS[@]}"
     fi
