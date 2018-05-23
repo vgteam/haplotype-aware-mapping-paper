@@ -472,9 +472,14 @@ for CONDITION_NAME in "${CONDITION_NAMES[@]}" ; do
 done
 
 # Also BWA
-# TODO: Is this the right output URL we will get?
 SIM_BAM_URLS=("${SIM_ALIGNMENTS_URL}/bwa-mem-pe.bam")
 BAM_NAMES=("bwa-pe")
+# And surjected BAMs
+for CONDITION_NAME in "${CONDITION_NAMES[@]}" ; do
+    # We generate them from the condition names
+    SIM_BAM_URLS+=("${SIM_ALIGNMENTS_URL}/${CONDITION_NAME}-surject.bam")
+    BAM_NAMES+=("${CONDITION_NAME}-surject")
+done
 
 # Check if all the expected output alignments exist and only run if not.
 SIM_ALIGNMENTS_READY=1
@@ -525,6 +530,10 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
 
     # And the BAM URLs
     REAL_BAM_URLS=("${REAL_ALIGNMENTS_URL}/bwa-mem-pe.bam")
+    for CONDITION_NAME in "${CONDITION_NAMES[@]}" ; do
+        # We generate them from the condition names
+        REAL_BAM_URLS+=("${REAL_ALIGNMENTS_URL}/${CONDITION_NAME}-surject.bam")
+    done
 
     # Make sure they exist
     REAL_ALIGNMENTS_READY=1
