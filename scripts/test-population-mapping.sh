@@ -392,7 +392,7 @@ for MIN_AF in "${MIN_AFS[@]}" ; do
         GAM_NAMES+=("snp1kg-minaf${MIN_AF_NUM}")      
     fi
     GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}")
-    ((MIN_AF_NUM++))
+    MIN_AF_NUM=$((MIN_AF_NUM+1))
 done
 
 # We want a primary control
@@ -508,7 +508,7 @@ for MIN_AF in "${MIN_AFS[@]}" ; do
         CONDITION_NAMES+=("snp1kg-minaf${MIN_AF_NUM}-mp-pe")       
     fi
     XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}.xg")
-    ((MIN_AF_NUM++))
+    MIN_AF_NUM=$((MIN_AF_NUM+1))
 done
 
 CONDITION_NAMES+=("pos-control-mp-pe")
