@@ -383,8 +383,17 @@ GAM_NAMES=()
 GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter")
 GAM_NAMES+=("snp1kg")
 
-GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}")
-GAM_NAMES+=("snp1kg-minaf")
+MIN_AF_NUM=0
+for MIN_AF in "${MIN_AFS[@]}" ; do
+    # Add to GRAPH_URLS and GAM_NAMES for all the minaf values
+    if [[ "${MIN_AF_NUM}" == "0" ]] ; then
+        GAM_NAMES+=("snp1kg-minaf")
+    else
+        GAM_NAMES+=("snp1kg-minaf${MIN_AF_NUM}")      
+    fi
+    GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}")
+    ((MIN_AF_NUM++))
+done
 
 # We want a primary control
 GRAPH_URLS+=("${GRAPHS_URL}/primary")
@@ -493,13 +502,13 @@ XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter.xg")
 MIN_AF_NUM=0
 for MIN_AF in "${MIN_AFS[@]}" ; do
     # Make condition names for all the minaf values
-    if [[ "${MIN_AF}" == "0" ]] ; then
+    if [[ "${MIN_AF_NUM}" == "0" ]] ; then
         CONDITION_NAMES+=("snp1kg-minaf-mp-pe")
     else
         CONDITION_NAMES+=("snp1kg-minaf${MIN_AF_NUM}-mp-pe")       
     fi
     XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}.xg")
-    ((MIN_AF_NUM++_))
+    ((MIN_AF_NUM++))
 done
 
 CONDITION_NAMES+=("pos-control-mp-pe")
