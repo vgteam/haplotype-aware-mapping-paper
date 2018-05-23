@@ -8,6 +8,7 @@ import argparse, sys, os, os.path, random, itertools, string, re
 import doctest
 
 import tsv
+import collections
 
 def parse_args(args):
     """
@@ -58,8 +59,8 @@ def main(args):
     # Start the output file
     writer = tsv.TsvWriter(options.output_tsv)
     
-    # The super easy way is to accumulate reads and basically run-length compress
-    accumulating = None
+    # I'm not happy with the super easy run length way. So we store this Counter by (correct, mapq, condition) tuple to count.
+    counter = collections.Counter()
     
     is_header = True
     for parts in tsv.TsvReader(options.input_tsv):
@@ -68,33 +69,18 @@ def main(args):
             writer.list_line(parts + ['count'])
             is_header = False
             continue
-    
-        if accumulating is not None and accumulating[0] == parts[0] and accumulating[1] == parts[1] and accumulating[2] == parts[2]:
-            # Merge in
-            accumulating[4] += 1
-        else:
-            if accumulating is not None:
-                # Flush the buffer
-                writer.list_line(accumulating)
-                accumulating = None
-                
-            if parts[0] == '1':
-                # Correct reads are accumulated
             
-                # Say we will accumulate on this read
-                accumulating = parts
-                # Clear the name
-                accumulating[3] = '.'
-                # Tack on a count
-                accumulating.append(1)
-            else:
-                # wrong reads are just dumped
-                writer.list_line(parts + [1])
-                
+        if parts[0] == '1':
+            # This is correct and goes in the counter
+            key = (parts[0], parts[1], parts[2])
+            counter[key] += 1
+        else:
+            # Wrong reads are just dumped with count 1
+            writer.list_line(parts + [1])
     
-    if accumulating is not None:
+    for key, count in counter.iteritems():
         # Flush the buffer
-        writer.list_line(accumulating)
+        writer.line(key[0], key[1], key[2], '.', count)
     
     return 0
         
