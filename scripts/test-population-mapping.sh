@@ -207,14 +207,17 @@ case "${INPUT_DATA_MODE}" in
         # If a non-whole-contig region is specified for any contig, we will need to convert this to
         # BED, so a region must be specified for all contigs.
         GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}")
-        # Define the VCF and FASTA basenames. We assume the VCF has a TBI.
+        # Define the VCF and FASTA basenames. We assume each VCF has a TBI.
+        # If multiple files are used they must match up with the contigs.
         # Note that this is hg19 and not GRCh38
-        CONSTRUCT_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg19-CHR21.vcf.gz"
-        CONSTRUCT_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/CHR21.fa"
+        CONSTRUCT_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg19-CHR21.vcf.gz")
+        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/CHR21.fa")
         # What FASTA should we use for BWA mapping? It needs to have just the selected regions cut out.
-        MAPPING_FASTA_URL="${CONSTRUCT_FASTA_URL}"
-        # What VCF should we use for the truth?
-        EVALUATION_VCF_URL="${CONSTRUCT_VCF_URL}"
+        MAPPING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
+        # What VCF should we use for the truth? Must be a single VCF.
+        EVALUATION_VCF_URL="${CONSTRUCT_VCF_URLS[0]}"
+        # And a single FASTA
+        EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         # And what high confidence regions should we use there?
         # This can't be specified if we are using regions on GRAPH_REGIONS
         EVALUATION_BED_URL=""
@@ -231,11 +234,12 @@ case "${INPUT_DATA_MODE}" in
         GRAPH_CONTIGS=("6")
         GRAPH_CONTIG_OFFSETS=("28510118")
         GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:28510119-33480577")
-        CONSTRUCT_VCF_URL="ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr6_GRCh38_sites.20170504.vcf.gz"
+        CONSTRUCT_VCF_URLS=("ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr6_GRCh38_sites.20170504.vcf.gz")
         # We had "s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-MHC.vcf.gz" but it is malformed
-        CONSTRUCT_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr6.fa.gz"
+        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr6.fa.gz")
         MAPPING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/MHC.fa"
-        EVALUATION_VCF_URL="${CONSTRUCT_VCF_URL}"
+        EVALUATION_VCF_URL="${CONSTRUCT_VCF_URLS[0]}"
+        EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         EVALUATION_BED_URL=""
         REAL_FASTQ_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/platinum_NA12878_MHC.fq.gz"
         ;;
@@ -247,11 +251,12 @@ case "${INPUT_DATA_MODE}" in
         GRAPH_CONTIGS=("17")
         GRAPH_CONTIG_OFFSETS=("43044292")
         GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:43044293-43125483")
-        CONSTRUCT_VCF_URL="ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr17_GRCh38.genotypes.20170504.vcf.gz"
+        CONSTRUCT_VCF_URLS=("ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr17_GRCh38.genotypes.20170504.vcf.gz")
         # We had "s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-BRCA1.vcf.gz" but it is malformed
-        CONSTRUCT_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr17.fa.gz"
+        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr17.fa.gz")
         MAPPING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/BRCA1.fa"
-        EVALUATION_VCF_URL="${CONSTRUCT_VCF_URL}"
+        EVALUATION_VCF_URL="${CONSTRUCT_VCF_URLS[0]}"
+        EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         EVALUATION_BED_URL=""
         REAL_FASTQ_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/platinum_NA12878_BRCA1.fq.gz"
         ;;
@@ -265,11 +270,12 @@ case "${INPUT_DATA_MODE}" in
         GRAPH_CONTIGS=("1" "2" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "13" "14" "15" "16" "17" "18" "19" "20" "21" "22" "X")
         GRAPH_CONTIG_OFFSETS=("0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0" "0")
         GRAPH_REGIONS=("${GRAPH_CONTIGS[@]}")
-        CONSTRUCT_VCF_URL="s3://glennhickey/1kg-data/ALL.wgs.phase3_shapeit2_mvncall_integrated_v5b.20130502.sites.vcf.gz"
-        CONSTRUCT_FASTA_URL="s3://glennhickey/1kg-data/hs37d5.fa.gz"
-        MAPPING_FASTA_URL="${CONSTRUCT_FASTA_URL}"
+        CONSTRUCT_VCF_URLS=("s3://glennhickey/1kg-data/ALL.wgs.phase3_shapeit2_mvncall_integrated_v5b.20130502.sites.vcf.gz")
+        CONSTRUCT_FASTA_URLS=("s3://glennhickey/1kg-data/hs37d5.fa.gz")
+        MAPPING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         # Skip calleval for now.
         EVALUATION_VCF_URL=""
+        EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         EVALUATION_BED_URL=""
         # TODO: find a real FASTQ for whole genomes
         REAL_FASTQ_URL=""
@@ -383,13 +389,6 @@ GAM_NAMES+=("pos-control")
 GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minus_${SAMPLE_NAME}")
 GAM_NAMES+=("neg-control")
 
-
-# We also need to make sure that the sample-only VCF is generated, to be our truth VCF.
-# TODO: import an external truth VCF for when we do real data
-GRAPH_VCF_FILENAME="${CONSTRUCT_VCF_URL##*/}"
-GRAPH_VCF_BASENAME="${GRAPH_VCF_FILENAME%.vcf.gz}"
-SAMPLE_ONLY_VCF_URL="${GRAPHS_URL}/${GRAPH_VCF_BASENAME}_${SAMPLE_NAME}.vcf.gz"
-
 # Check if all the expected output graphs exist and only run if not.
 GRAPHS_READY=1
 for GRAPH_BASE_URL in "${GRAPH_URLS[@]}" ; do
@@ -410,12 +409,6 @@ for GRAPH_BASE_URL in "${GRAPH_URLS[@]}" ; do
     fi
 done
 
-if ! aws s3 ls >/dev/null "${SAMPLE_ONLY_VCF_URL}" ; then
-    echo "Need to generate VCF file ${SAMPLE_ONLY_VCF_URL}"
-    GRAPHS_READY=0
-fi
-
-
 if [[ "${GRAPHS_READY}" != "1" ]] ; then
     # Graphs need to be generated
     
@@ -425,8 +418,8 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         "$(url_to_store "${GRAPHS_URL}")" \
         --whole_genome_config \
         "${VG_DOCKER_OPTS[@]}" \
-        --vcf "${CONSTRUCT_VCF_URL}" \
-        --fasta "${CONSTRUCT_FASTA_URL}" \
+        --vcf "${CONSTRUCT_VCF_URLS[@]}" \
+        --fasta "${CONSTRUCT_FASTA_URLS[@]}" \
         --out_name "snp1kg-${REGION_NAME}" \
         --alt_paths \
         --control_sample "${SAMPLE_NAME}" \
@@ -549,7 +542,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         --strip-gbwt \
         --use-snarls \
         --surject \
-        --bwa --fasta "${CONSTRUCT_FASTA_URL}" \
+        --bwa --fasta "${MAPPING_FASTA_URL}" \
         --fastq "${READS_URL}/sim.fq.gz" \
         --truth "${READS_URL}/true.pos" \
         --plot-sets \
@@ -603,7 +596,7 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
             --strip-gbwt \
             --use-snarls \
             --surject \
-            --bwa --fasta "${CONSTRUCT_FASTA_URL}" \
+            --bwa --fasta "${MAPPING_FASTA_URL}" \
             --fastq "${REAL_FASTQ_URL}" \
             --skip-eval \
             "${TOIL_CLUSTER_OPTS[@]}"
@@ -683,7 +676,7 @@ if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
         --chroms "${GRAPH_CONTIGS[@]}" \
         --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
         --vcfeval_fasta "${CONSTRUCT_FASTA_URL}" \
-        --vcfeval_baseline "${SAMPLE_ONLY_VCF_URL}" \
+        --vcfeval_baseline "${EVALUATION_VCF_URL}" \
         --call \
         "${BED_OPTS[@]}" \
         --sample_name "${SAMPLE_NAME}" \
@@ -717,8 +710,8 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
             --xg_paths "${XG_URLS[@]}" \
             --chroms "${GRAPH_CONTIGS[@]}" \
             --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
-            --vcfeval_fasta "${CONSTRUCT_FASTA_URL}" \
-            --vcfeval_baseline "${SAMPLE_ONLY_VCF_URL}" \
+            --vcfeval_fasta "${EVALUATION_FASTA_URL}" \
+            --vcfeval_baseline "${EVALUATION_VCF_URL}" \
             --call \
             "${BED_OPTS[@]}" \
             --sample_name "${SAMPLE_NAME}" \
