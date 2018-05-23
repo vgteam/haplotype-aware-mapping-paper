@@ -505,8 +505,10 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         --fastq "${READS_URL}/sim.fq.gz" \
         --truth "${READS_URL}/true.pos" \
         --plot-sets \
-        "primary-mp-pe,primary-mp,snp1kg-mp-pe,snp1kg-mp,snp1kg-gbwt-mp-pe,snp1kg-gbwt-mp,snp1kg-minaf-mp-pe,snp1kg-minaf-mp,pos-control-mp-pe,pos-control-mp,neg-control-mp-pe,neg-control-mp" \
-        "bwa-mem-pe,bwa-mem,snp1kg-gbwt-mp-pe,snp1kg-gbwt-mp,snp1kg-pe,snp1kg" \
+        "primary-mp-pe,snp1kg-mp-pe,snp1kg-gbwt-mp-pe,snp1kg-minaf-mp-pe,snp1kg-minaf-gbwt-mp-pe,pos-control-mp-pe,neg-control-mp-pe" \
+        "primary-mp,snp1kg-mp,snp1kg-gbwt-mp,snp1kg-minaf-mp,snp1kg-minaf-gbwt-mp,pos-control-mp,neg-control-mp" \
+        "bwa-mem-pe,snp1kg-gbwt-mp-pe,snp1kg-pe" \
+        "bwa-mem,snp1kg-gbwt-mp,snp1kg" \
         "${TOIL_CLUSTER_OPTS[@]}"
 fi
 
@@ -620,7 +622,7 @@ if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
         "${BED_OPTS[@]}" \
         --sample_name "${SAMPLE_NAME}" \
         --plot_sets \
-            "primary-mp-pe-call,snp1kg-mp-pe-call,snp1kg-gbwt-mp-pe-call,snp1kg-minaf-mp-pe-call,pos-control-mp-pe-call,neg-control-mp-pe-call" \
+            "primary-mp-pe-call,snp1kg-mp-pe-call,snp1kg-gbwt-mp-pe-call,snp1kg-minaf-mp-pe-call,snp1kg-minaf-gbwt-mp-pe-call,pos-control-mp-pe-call,neg-control-mp-pe-call" \
             "bwa-pe-fb,snp1kg-gbwt-mp-pe-call,snp1kg-pe-call" \
         "${TOIL_CLUSTER_OPTS[@]}"
 fi
