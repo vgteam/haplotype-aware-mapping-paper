@@ -67,8 +67,9 @@ SAMPLE_NAME="NA12878"
 # And options to filter them out of graphs, along with people related to them
 FILTER_OPTS=("--filter_ceph" "--filter_samples" "${SAMPLE_NAME}")
 
-# What min allele frequency limit do we use?
-MIN_AF="0.0335570469"
+# What min allele frequency limits do we use?
+# These come out as minaf, minaf1, minaf2, minaf3 (number = # of zeroes)
+MIN_AFS=("0.0335570469", "0.1", "0.01", "0.001")
 
 # Put this in front of commands to do or not do them, depending on if we are doing a dry run or not
 PREFIX=""
@@ -400,7 +401,7 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         --haplo_sample "${SAMPLE_NAME}" \
         "${FILTER_OPTS[@]}" \
         --regions "${GRAPH_REGIONS[@]}" \
-        --min_af "${MIN_AF}" \
+        --min_af "${MIN_AFS[@]}" \
         --primary \
         --gcsa_index \
         --xg_index \
@@ -454,8 +455,17 @@ XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter.xg")
 CONDITION_NAMES+=("snp1kg-gbwt-mp-pe")
 XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter.xg")
 
-CONDITION_NAMES+=("snp1kg-minaf-mp-pe")
-XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}.xg")
+MIN_AF_NUM=0
+for MIN_AF in "${MIN_AFS[@]}" ; do
+    # Make condition names for all the minaf values
+    if [[ "${MIN_AF}" == "0" ]] ; then
+        CONDITION_NAMES+=("snp1kg-minaf-mp-pe")
+    else
+        CONDITION_NAMES+=("snp1kg-minaf${MIN_AF_NUM}-mp-pe")       
+    fi
+    XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}.xg")
+    ((MIN_AF_NUM++_))
+done
 
 CONDITION_NAMES+=("pos-control-mp-pe")
 XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}.xg")
