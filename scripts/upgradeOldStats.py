@@ -89,7 +89,7 @@ def main(args):
                 accumulating.append(1)
             else:
                 # wrong reads are just dumped
-                writer.list_line(parts)
+                writer.list_line(parts + [1])
                 
     
     if accumulating is not None:
