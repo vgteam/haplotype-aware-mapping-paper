@@ -501,6 +501,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         --use-gbwt \
         --strip-gbwt \
         --use-snarls \
+        --surject \
         --bwa --fasta "${GRAPH_FASTA_URL}" \
         --fastq "${READS_URL}/sim.fq.gz" \
         --truth "${READS_URL}/true.pos" \
@@ -550,6 +551,7 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
             --use-gbwt \
             --strip-gbwt \
             --use-snarls \
+            --surject \
             --bwa --fasta "${GRAPH_FASTA_URL}" \
             --fastq "${REAL_FASTQ_URL}" \
             --skip-eval \
