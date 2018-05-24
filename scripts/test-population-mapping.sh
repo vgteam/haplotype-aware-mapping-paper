@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@1f2d99243b1de3d8b6b9ddbbb48ab855213ebdd3#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@08088d3a16d5ac3f41d769d95c9493eed785238b#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -502,11 +502,15 @@ XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter.xg")
 MIN_AF_NUM=0
 for MIN_AF in "${MIN_AFS[@]}" ; do
     # Make condition names for all the minaf values
+    # Make sure to handle normal and gbwt versions
     if [[ "${MIN_AF_NUM}" == "0" ]] ; then
         CONDITION_NAMES+=("snp1kg-minaf-mp-pe")
+        CONDITION_NAMES+=("snp1kg-minaf-gbwt-mp-pe")
     else
-        CONDITION_NAMES+=("snp1kg-minaf${MIN_AF_NUM}-mp-pe")       
+        CONDITION_NAMES+=("snp1kg-minaf${MIN_AF_NUM}-mp-pe")
+        CONDITION_NAMES+=("snp1kg-minaf${MIN_AF_NUM}-gbwt-mp-pe")
     fi
+    XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}.xg")
     XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}.xg")
     MIN_AF_NUM=$((MIN_AF_NUM+1))
 done
