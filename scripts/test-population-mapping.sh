@@ -531,7 +531,7 @@ BAM_NAMES=("bwa-pe")
 # And surjected BAMs
 for CONDITION_NAME in "${CONDITION_NAMES[@]}" ; do
     # We generate them from the condition names
-    SIM_BAM_URLS+=("${SIM_ALIGNMENTS_URL}/${CONDITION_NAME}-surject.bam")
+    SIM_BAM_URLS+=("${SIM_ALIGNMENTS_URL}/aligned-${CONDITION_NAME}-surject.bam")
     BAM_NAMES+=("${CONDITION_NAME}-surject")
 done
 
@@ -586,7 +586,7 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
     REAL_BAM_URLS=("${REAL_ALIGNMENTS_URL}/bwa-mem-pe.bam")
     for CONDITION_NAME in "${CONDITION_NAMES[@]}" ; do
         # We generate them from the condition names
-        REAL_BAM_URLS+=("${REAL_ALIGNMENTS_URL}/${CONDITION_NAME}-surject.bam")
+        REAL_BAM_URLS+=("${REAL_ALIGNMENTS_URL}/aligned-${CONDITION_NAME}-surject.bam")
     done
 
     # Make sure they exist
