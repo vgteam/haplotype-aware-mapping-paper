@@ -703,7 +703,7 @@ if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
         --xg_paths "${XG_URLS[@]}" \
         --chroms "${GRAPH_CONTIGS[@]}" \
         --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
-        --vcfeval_fasta "${CONSTRUCT_FASTA_URL}" \
+        --vcfeval_fasta "${EVALUATION_FASTA_URL}" \
         --vcfeval_baseline "${EVALUATION_VCF_URL}" \
         --call \
         "${BED_OPTS[@]}" \
