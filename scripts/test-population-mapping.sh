@@ -713,8 +713,8 @@ if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
         "${BED_OPTS[@]}" \
         --sample_name "${SAMPLE_NAME}" \
         --plot_sets \
-            "primary-mp-pe-call,snp1kg-mp-pe-call,snp1kg-gbwt-mp-pe-call,snp1kg-minaf-mp-pe-call,snp1kg-minaf-gbwt-mp-pe-call,pos-control-mp-pe-call,neg-control-mp-pe-call" \
-            "bwa-pe-fb,snp1kg-gbwt-mp-pe-call,snp1kg-pe-call" \
+            "primary-mp-pe-surject-fb,snp1kg-mp-pe-surject-fb,snp1kg-gbwt-mp-pe-surject-fb,snp1kg-minaf-mp-pe-surject-fb,snp1kg-minaf-gbwt-mp-pe-surject-fb,pos-control-mp-pe-surject-fb,neg-control-mp-pe-surject-fb" \
+            "bwa-pe-fb,snp1kg-gbwt-mp-pe-surject-fb,snp1kg-pe-surject-fb" \
         "${TOIL_CLUSTER_OPTS[@]}"
 fi
 
@@ -748,8 +748,8 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
             "${BED_OPTS[@]}" \
             --sample_name "${SAMPLE_NAME}" \
             --plot_sets \
-                "primary-mp-pe-call,snp1kg-mp-pe-call,snp1kg-gbwt-mp-pe-call,snp1kg-minaf-mp-pe-call,pos-control-mp-pe-call,neg-control-mp-pe-call" \
-                "bwa-pe-fb,snp1kg-gbwt-mp-pe-call,snp1kg-pe-call" \
+                "primary-mp-pe-surject-fb,snp1kg-mp-pe-surject-fb,snp1kg-gbwt-mp-pe-surject-fb,snp1kg-minaf-mp-pe-surject-fb,snp1kg-minaf-gbwt-mp-pe-surject-fb,pos-control-mp-pe-surject-fb,neg-control-mp-pe-surject-fb" \
+                "bwa-pe-fb,snp1kg-gbwt-mp-pe-surject-fb,snp1kg-pe-surject-fb" \
             "${TOIL_CLUSTER_OPTS[@]}"
     fi
 
