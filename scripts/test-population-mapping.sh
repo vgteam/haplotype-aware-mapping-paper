@@ -264,9 +264,10 @@ case "${INPUT_DATA_MODE}" in
         REAL_REALIGN_BAM_URL=""
         ;;
     WG38)
-        # Do 10m pairs on the whole genome (GRCh38)
-        # TODO: Compose a whole genome 38 VCF
-        READ_COUNT="10000000"
+        # 10m pairs would be enough to test mapping, and we could use the real data to test calling
+        # But it would be good to have sim calling results too
+        # So simulate 500m read pairs, which even at 100 bp/read is ~30x coverage
+        READ_COUNT="500000000"
         READ_CHUNKS="32"
         REGION_NAME="WG38"
         # We do all the chroms except Y because NA12878 is XX AFAIK
