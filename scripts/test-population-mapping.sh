@@ -233,8 +233,8 @@ case "${INPUT_DATA_MODE}" in
         READ_CHUNKS="2"
         REGION_NAME="MHC"
         GRAPH_CONTIGS=("6")
-        GRAPH_CONTIG_OFFSETS=("28510118")
-        GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:28510119-33480577")
+        GRAPH_CONTIG_OFFSETS=("28510119")
+        GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:28510120-33480577")
         CONSTRUCT_VCF_URLS=("ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr6_GRCh38_sites.20170504.vcf.gz")
         # We had "s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-MHC.vcf.gz" but it is malformed
         CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr6.fa.gz")
@@ -251,8 +251,8 @@ case "${INPUT_DATA_MODE}" in
         READ_CHUNKS="2"
         REGION_NAME="BRCA1"
         GRAPH_CONTIGS=("17")
-        GRAPH_CONTIG_OFFSETS=("43044292")
-        GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:43044293-43125483")
+        GRAPH_CONTIG_OFFSETS=("43044293")
+        GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:43044294-43125484")
         CONSTRUCT_VCF_URLS=("ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr17_GRCh38.genotypes.20170504.vcf.gz")
         # We had "s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-BRCA1.vcf.gz" but it is malformed
         CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr17.fa.gz")
