@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@51b4876c76b31cc337a67f0fa9043c90092157d5#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@40ab95d726b20b3b4ae84efce1b1d4406e9664a6#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -212,8 +212,8 @@ case "${INPUT_DATA_MODE}" in
         # Note that this is hg19 and not GRCh38
         CONSTRUCT_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg19-CHR21.vcf.gz")
         CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/CHR21.fa")
-        # What FASTA should we use for BWA mapping? It needs to have just the selected regions cut out.
-        MAPPING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
+        # What FASTA should we use for BWA mapping and Freebayes calling? It needs to have just the selected regions cut out.
+        MAPPING_CALLING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         # What VCF should we use for the truth? Must be a single VCF.
         EVALUATION_VCF_URL="${CONSTRUCT_VCF_URLS[0]}"
         # And a single FASTA
@@ -238,7 +238,7 @@ case "${INPUT_DATA_MODE}" in
         CONSTRUCT_VCF_URLS=("ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr6_GRCh38_sites.20170504.vcf.gz")
         # We had "s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-MHC.vcf.gz" but it is malformed
         CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr6.fa.gz")
-        MAPPING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/MHC.fa"
+        MAPPING_CALLING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/MHC.fa"
         EVALUATION_VCF_URL="${CONSTRUCT_VCF_URLS[0]}"
         EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         EVALUATION_BED_URL=""
@@ -256,7 +256,7 @@ case "${INPUT_DATA_MODE}" in
         CONSTRUCT_VCF_URLS=("ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr17_GRCh38.genotypes.20170504.vcf.gz")
         # We had "s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-BRCA1.vcf.gz" but it is malformed
         CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr17.fa.gz")
-        MAPPING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/BRCA1.fa"
+        MAPPING_CALLING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/BRCA1.fa"
         EVALUATION_VCF_URL="${CONSTRUCT_VCF_URLS[0]}"
         EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         EVALUATION_BED_URL=""
@@ -283,7 +283,7 @@ case "${INPUT_DATA_MODE}" in
         # I built this by stripping the "chr" off of ftp://ftp.1000genomes.ebi.ac.uk//vol1/ftp/technical/reference/GRCh38_reference_genome/GRCh38_full_analysis_set_plus_decoy_hla.fa
         # TODO: Won't that cause trouble with the presence/absence of decoys in the graph being confounded with mapper?
         CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/GRCh38.fa.gz")
-        MAPPING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
+        MAPPING_CALLING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         # Evaluate against Platinum Genomes/GIAB hybrid
         EVALUATION_VCF_URL="ftp://platgene_ro:@ussd-ftp.illumina.com/2017-1.0/hg38/hybrid/hg38.hybrid.vcf.gz"
         EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
@@ -566,7 +566,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         --strip-gbwt \
         --use-snarls \
         --surject \
-        --bwa --fasta "${MAPPING_FASTA_URL}" \
+        --bwa --fasta "${MAPPING_CALLING_FASTA_URL}" \
         --fastq "${READS_URL}/sim.fq.gz" \
         --truth "${READS_URL}/true.pos" \
         --plot-sets \
@@ -629,7 +629,7 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
             --strip-gbwt \
             --use-snarls \
             --surject \
-            --bwa --fasta "${MAPPING_FASTA_URL}" \
+            --bwa --fasta "${MAPPING_CALLING_FASTA_URL}" \
             "${DATA_OPTS[@]}" \
             --skip-eval \
             "${TOIL_CLUSTER_OPTS[@]}"
@@ -710,6 +710,7 @@ if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
         --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
         --vcfeval_fasta "${EVALUATION_FASTA_URL}" \
         --vcfeval_baseline "${EVALUATION_VCF_URL}" \
+        --freebayes_fasta "${MAPPING_CALLING_FASTA_URL}" \
         --call \
         "${BED_OPTS[@]}" \
         --sample_name "${SAMPLE_NAME}" \
@@ -745,6 +746,7 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
             --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
             --vcfeval_fasta "${EVALUATION_FASTA_URL}" \
             --vcfeval_baseline "${EVALUATION_VCF_URL}" \
+            --freebayes_fasta "${MAPPING_CALLING_FASTA_URL}" \
             --call \
             "${BED_OPTS[@]}" \
             --sample_name "${SAMPLE_NAME}" \
