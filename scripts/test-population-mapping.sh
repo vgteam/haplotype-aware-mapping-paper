@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@40ab95d726b20b3b4ae84efce1b1d4406e9664a6#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@208bd2883bfb55b39e61c269cc739fd7257d7c68#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -21,7 +21,7 @@ TOIL_APPLIANCE_SELF="quay.io/ucsc_cgl/toil:3.16.0a1.dev2290-c6d3a2a1677ba3928ad5
 AWSCLI_PACKAGE="awscli==1.14.70"
 
 # What vg should we use?
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.7.0-76-g4f04d04b-t169-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.7.0-97-g7faaf274-t172-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -291,6 +291,26 @@ case "${INPUT_DATA_MODE}" in
         REAL_FASTQ_URL=""
         REAL_REALIGN_BAM_URL="ftp://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/NA12878/NIST_NA12878_HG001_HiSeq_300x/RMNISTHS_30xdownsample.bam"
         ;;
+    test)
+        # Do a couple test regions of fake chromosomes
+        # Exercise both multi-chromosome and offset capabilities
+        READ_COUNT="1000"
+        READ_CHUNKS="2"
+        REGION_NAME="test"
+        GRAPH_CONTIGS=("ref" "x")
+        GRAPH_CONTIG_OFFSETS=("5" "5")
+        GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:6-133" "${GRAPH_CONTIGS[1]}:6-1001")
+        CONSTRUCT_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref.vcf.gz" "s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/x.vcf.gz")
+        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref.fa" "s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/x.fa")
+        MAPPING_CALLING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined-minus-5-bases.fa"
+        EVALUATION_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.vcf.gz"
+        EVALUATION_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.fa"
+        EVALUATION_BED_URL=""
+        REAL_FASTQ_URL=""
+        REAL_REALIGN_BAM_URL=""
+        # Override sample name with one present in these VCFs
+        SAMPLE_NAME="1"
+        ;;
     *)
         echo 1>&2 "Unknown input data set ${INPUT_DATA_MODE}"
         exit 1
@@ -321,11 +341,13 @@ function clean_up() {
     set +e
     
     # Delete the Toil intermediates we could have used to restart jobs, since
-    # we have a lot of Toil runs and no good way to restart just one
-    $PREFIX toil clean "${JOB_TREE_CONSTRUCT}"
-    $PREFIX toil clean "${JOB_TREE_SIM}"
-    $PREFIX toil clean "${JOB_TREE_MAPEVAL}"
-    $PREFIX toil clean "${JOB_TREE_CALLEVAL}"
+    # we have a lot of Toil runs and no good way to restart just one.
+    # Make sure to do the clean from the cluster, because we don't necessarily
+    # know our local SSL will agree with the remote certs.
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" toil clean "${JOB_TREE_CONSTRUCT}"
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" toil clean "${JOB_TREE_SIM}"
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" toil clean "${JOB_TREE_MAPEVAL}"
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" toil clean "${JOB_TREE_CALLEVAL}"
     
     if [[ "${PERSISTENT_CLUSTER}" == "0" ]]; then
         # Destroy the cluster
