@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@208bd2883bfb55b39e61c269cc739fd7257d7c68#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@d31822bfafcebe2ff35b1f2c62c4b18f85c6cb9b#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -21,7 +21,7 @@ TOIL_APPLIANCE_SELF="quay.io/ucsc_cgl/toil:3.16.0a1.dev2290-c6d3a2a1677ba3928ad5
 AWSCLI_PACKAGE="awscli==1.14.70"
 
 # What vg should we use?
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.7.0-97-g7faaf274-t172-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.7.0-103-gf87f178b-t174-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -400,10 +400,14 @@ TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
 
 # Decide what graphs to run
 GRAPH_URLS=()
+# Each graph can have a second basename associated, to override the XG for evaluation
+# This lets us use a sample graph that ignores unused reference bases as the positive mapping control
+EVAL_XG_OVERRIDE_BASE_URLS=()
 GAM_NAMES=()
 
 # We want the actual graph with its indexes (minus the sample under test)
 GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter")
+EVAL_XG_OVERRIDE_BASE_URLS+=("")
 GAM_NAMES+=("snp1kg")
 
 MIN_AF_NUM=0
@@ -415,28 +419,56 @@ for MIN_AF in "${MIN_AFS[@]}" ; do
         GAM_NAMES+=("snp1kg-minaf${MIN_AF_NUM}")      
     fi
     GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}")
+    EVAL_XG_OVERRIDE_BASE_URLS+=("")
     MIN_AF_NUM=$((MIN_AF_NUM+1))
 done
 
 # We want a primary control
 GRAPH_URLS+=("${GRAPHS_URL}/primary")
+EVAL_XG_OVERRIDE_BASE_URLS+=("")
 GAM_NAMES+=("primary")
 
-# We want a positive control with just the right variants
+# We want a positive control
+
+# The new style (sample only), when it is ready, will be:
+#GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_sample")
+#EVAL_XG_OVERRIDE_BASE_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}")
+# But for now we do the old style (sample + reference)
 GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}")
+EVAL_XG_OVERRIDE_BASE_URLS+=("")
 GAM_NAMES+=("pos-control")
 
 
 # We want a negative control with no right variants
 GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minus_${SAMPLE_NAME}")
+EVAL_XG_OVERRIDE_BASE_URLS+=("")
 GAM_NAMES+=("neg-control")
+
+# Compose actual index bases by zipping
+INDEX_BASES=()
+GRAPH_NUMBER=0
+while [[ "${GRAPH_NUMBER}" -lt "${#GRAPH_URLS[@]}" ]] ; do
+    # For each graph, get its graph and override URLs
+    GRAPH_URL="${GRAPH_URLS[${GRAPH_NUMBER}]}"
+    XG_OVERRIDE_URL="${EVAL_XG_OVERRIDE_BASE_URLS[${GRAPH_NUMBER}]}"
+    
+    if [[ "${XG_OVERRIDE_URL}" == "" ]] ; then
+        # There is no override, so use just the graph URL
+        INDEX_BASES+=("${GRAPH_URL}")
+    else
+        # Comma-separate the graph and index override URLs
+        INDEX_BASES+=("${GRAPH_URL},${XG_OVERRIDE_URL}")
+    fi
+    
+    ((GRAPH_NUMBER=${GRAPH_NUMBER}+1))
+done
 
 # Check if all the expected output graphs exist and only run if not.
 GRAPHS_READY=1
 for GRAPH_BASE_URL in "${GRAPH_URLS[@]}" ; do
     # For each graph we want to run
     for SUFFIX in ".vg" ".xg" ".gcsa" ".gcsa.lcp" ; do
-        # For each file requiredf for the graph
+        # For each file required for the graph
         
         if ! aws s3 ls >/dev/null "${GRAPH_BASE_URL}${SUFFIX}" ; then
             # The graphs are not ready yet because this file is missing
@@ -445,6 +477,24 @@ for GRAPH_BASE_URL in "${GRAPH_URLS[@]}" ; do
             break
         fi
     done
+    
+    if [[ "${GRAPHS_READY}" == "0" ]] ; then
+        break
+    fi
+done
+
+for GRAPH_BASE_URL in "${EVAL_XG_OVERRIDE_BASE_URLS[@]}" ; do
+    if [[ "${GRAPH_BASE_URL}" == "" ]] ; then
+        # Skip empty overrides
+        continue
+    fi
+        
+    if ! aws s3 ls >/dev/null "${GRAPH_BASE_URL}.xg" ; then
+        # The graphs are not ready yet because this override file is missing
+        echo "Need to generate graph file ${GRAPH_BASE_URL}${SUFFIX}"
+        GRAPHS_READY=0
+        break
+    fi
     
     if [[ "${GRAPHS_READY}" == "0" ]] ; then
         break
@@ -464,12 +514,14 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         --fasta "${CONSTRUCT_FASTA_URLS[@]}" \
         --out_name "snp1kg-${REGION_NAME}" \
         --alt_paths \
-        --control_sample "${SAMPLE_NAME}" \
+        --pangenome \
+        --min_af "${MIN_AFS[@]}" \
+        --primary \
+        --pos_control "${SAMPLE_NAME}" \
+        --neg_control "${SAMPLE_NAME}" \
         --haplo_sample "${SAMPLE_NAME}" \
         "${FILTER_OPTS[@]}" \
         --regions "${GRAPH_REGIONS[@]}" \
-        --min_af "${MIN_AFS[@]}" \
-        --primary \
         --gcsa_index \
         --xg_index \
         --gbwt_index \
@@ -538,6 +590,8 @@ for MIN_AF in "${MIN_AFS[@]}" ; do
     MIN_AF_NUM=$((MIN_AF_NUM+1))
 done
 
+# For the positive control, always use the sample + reference XG, without _sample, for calling.
+# We need the primary path in there, even if we did the new-style sample-only graph for mapping.
 CONDITION_NAMES+=("pos-control-mp-pe")
 XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}.xg")
 
@@ -581,7 +635,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         "$(url_to_store "${SIM_ALIGNMENTS_URL}")" \
         --whole_genome_config \
         "${VG_DOCKER_OPTS[@]}" \
-        --index-bases "${GRAPH_URLS[@]}" \
+        --index-bases "${INDEX_BASES[@]}" \
         --gam-names "${GAM_NAMES[@]}" \
         --multipath \
         --use-gbwt \
@@ -644,7 +698,7 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
             "$(url_to_store "${REAL_ALIGNMENTS_URL}")" \
             --whole_genome_config \
             "${VG_DOCKER_OPTS[@]}" \
-            --index-bases "${GRAPH_URLS[@]}" \
+            --index-bases "${INDEX_BASES[@]}" \
             --gam-names "${GAM_NAMES[@]}" \
             --multipath \
             --use-gbwt \
