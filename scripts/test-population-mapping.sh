@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@d31822bfafcebe2ff35b1f2c62c4b18f85c6cb9b#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@901c09e2c5bde40f3a6424192aa50bb36af76f72#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -467,7 +467,7 @@ done
 GRAPHS_READY=1
 for GRAPH_BASE_URL in "${GRAPH_URLS[@]}" ; do
     # For each graph we want to run
-    for SUFFIX in ".vg" ".xg" ".gcsa" ".gcsa.lcp" ; do
+    for SUFFIX in ".xg" ".gcsa" ".gcsa.lcp" ".snarls" ; do
         # For each file required for the graph
         
         if ! aws s3 ls >/dev/null "${GRAPH_BASE_URL}${SUFFIX}" ; then
