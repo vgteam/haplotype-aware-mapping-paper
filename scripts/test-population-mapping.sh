@@ -389,7 +389,7 @@ MASTER_IP="${MASTER_IP//[$'\t\r\n ']}"
 TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
     --batchSystem mesos --provisioner=aws "--mesosMaster=${MASTER_IP}:5050" \
     "--nodeTypes=${NODE_TYPES}" --defaultPreemptable "--maxNodes=${MAX_NODES}" "--minNodes=${MIN_NODES}" \
-    --alphaPacking 2.0 --metrics)
+    --metrics)
 
 
 ########################################################################################################
