@@ -4,12 +4,12 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@901c09e2c5bde40f3a6424192aa50bb36af76f72#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@c50be1eb43e1528e720e88e06527a6fc004fb5a7#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
 # installed from a non-release Git commit.
-TOIL_APPLIANCE_SELF="quay.io/ucsc_cgl/toil:3.16.0a1.dev2290-c6d3a2a1677ba3928ad5a9ebb6d862b02dd97998"
+TOIL_APPLIANCE_SELF="quay.io/ucsc_cgl/toil:3.16.0"
 
 # What version of awscli do we use? This has to be compatible with the
 # botocore/boto3 that toil-vg and toil can agree on, and each awscli version
@@ -21,7 +21,7 @@ TOIL_APPLIANCE_SELF="quay.io/ucsc_cgl/toil:3.16.0a1.dev2290-c6d3a2a1677ba3928ad5
 AWSCLI_PACKAGE="awscli==1.14.70"
 
 # What vg should we use?
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.7.0-103-gf87f178b-t174-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.7.0-133-g7e6d1bfd-t178-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -35,6 +35,11 @@ NODE_TYPES="i3.8xlarge,i3.8xlarge:0.90"
 MAX_NODES="8,8"
 # And at least per type? (Should probably be 0)
 # Also comma-separated.
+MIN_NODES="0,0"
+
+# For a big run:
+NODE_TYPES="i3.8xlarge,r4.8xlarge:0.60"
+MAX_NODES="10,20"
 MIN_NODES="0,0"
 
 # What's our unique run ID? Should be lower-case and start with a letter for maximum compatibility.
@@ -618,7 +623,7 @@ done
 
 # Check if all the expected output alignments exist and only run if not.
 SIM_ALIGNMENTS_READY=1
-for ALIGNMENT_URL in "${SIM_GAM_URLS[@]}" "${SIM_BAM_URLS[@]}" ; do
+for ALIGNMENT_URL in "${SIM_GAM_URLS[@]}" "${SIM_BAM_URLS[@]}" "${SIM_ALIGNMENTS_URL}/position.results.tsv" "${SIM_ALIGNMENTS_URL}/plots/plot-roc.svg"; do
     if ! aws s3 ls >/dev/null "${ALIGNMENT_URL}" ; then
         # The alignments are not ready yet because this file is missing
         echo "Need to generate alignment file ${ALIGNMENT_URL}"
@@ -672,7 +677,7 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
 
     # Make sure they exist
     REAL_ALIGNMENTS_READY=1
-    for ALIGNMENT_URL in "${REAL_GAM_URLS[@]}" "${REAL_BAM_URLS[@]}" ; do
+    for ALIGNMENT_URL in "${REAL_GAM_URLS[@]}" "${REAL_BAM_URLS[@]}" "${REAL_ALIGNMENTS_URL}/position.results.tsv" "${REAL_ALIGNMENTS_URL}/plots/plot-roc.svg" ; do
         if ! aws s3 ls >/dev/null "${ALIGNMENT_URL}" ; then
             # The alignments are not ready yet because this file is missing
             echo "Need to generate alignment file ${ALIGNMENT_URL}"
@@ -770,6 +775,12 @@ if ! aws s3 ls >/dev/null "${SIM_CALLS_URL}/plots/roc-weighted.svg" ; then
 fi
 
 # It would be nice if we could run genotype, but it is extremely slow (~2.5 hours per chunk on chr21 sim data)
+# If we ran call we would add
+#--gams "${SIM_GAM_URLS[@]}" \
+#--gam_names "${CONDITION_NAMES[@]}" \
+# --xg_paths "${XG_URLS[@]}" \
+#--call \
+
 
 if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg calleval \
@@ -777,17 +788,13 @@ if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
         "$(url_to_store "${SIM_CALLS_URL}")" \
         --whole_genome_config \
         "${VG_DOCKER_OPTS[@]}" \
-        --gams "${SIM_GAM_URLS[@]}" \
-        --gam_names "${CONDITION_NAMES[@]}" \
         --bams "${SIM_BAM_URLS[@]}" \
         --bam_names "${BAM_NAMES[@]}" \
-        --xg_paths "${XG_URLS[@]}" \
         --chroms "${GRAPH_CONTIGS[@]}" \
         --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
         --vcfeval_fasta "${EVALUATION_FASTA_URL}" \
         --vcfeval_baseline "${EVALUATION_VCF_URL}" \
         --freebayes_fasta "${MAPPING_CALLING_FASTA_URL}" \
-        --call \
         "${BED_OPTS[@]}" \
         --sample_name "${SAMPLE_NAME}" \
         --plot_sets \
@@ -807,23 +814,25 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
         REAL_CALLS_READY=0
     fi
 
+    # If we ran call we would add:
+    #--gams "${REAL_GAM_URLS[@]}" \
+    #--gam_names "${CONDITION_NAMES[@]}" \
+    # --xg_paths "${XG_URLS[@]}" \
+    #--call \
+
     if [[ "${REAL_CALLS_READY}" != "1" ]] ; then
         $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg calleval \
             "${JOB_TREE_CALLEVAL}" \
             "$(url_to_store "${REAL_CALLS_URL}")" \
             --whole_genome_config \
             "${VG_DOCKER_OPTS[@]}" \
-            --gams "${REAL_GAM_URLS[@]}" \
-            --gam_names "${CONDITION_NAMES[@]}" \
             --bams "${REAL_BAM_URLS[@]}" \
             --bam_names "${BAM_NAMES[@]}" \
-            --xg_paths "${XG_URLS[@]}" \
             --chroms "${GRAPH_CONTIGS[@]}" \
             --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
             --vcfeval_fasta "${EVALUATION_FASTA_URL}" \
             --vcfeval_baseline "${EVALUATION_VCF_URL}" \
             --freebayes_fasta "${MAPPING_CALLING_FASTA_URL}" \
-            --call \
             "${BED_OPTS[@]}" \
             --sample_name "${SAMPLE_NAME}" \
             --plot_sets \
