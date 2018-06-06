@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@c50be1eb43e1528e720e88e06527a6fc004fb5a7#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@1754878fe59ba140b74de2738866d44f1213a0fb#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -27,19 +27,14 @@ VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.7.0-133-g7e6d1bfd-t178-r
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
 # We need non-preemptable i3.4xlarge at least to get ~3.8TB storage available so the GCSA indexing jobs will have somewhere to run.
 # And we also need more memory (?) than that so some of the later jobs will run.
-NODE_TYPES="i3.8xlarge,i3.8xlarge:0.90"
+NODE_TYPES="i3.8xlarge,r4.8xlarge:0.60"
 # How many nodes should we use at most per type?
 # Also comma-separated.
 # TODO: These don't sort right pending https://github.com/BD2KGenomics/toil/issues/2195
 # We can only get the limits right for preemptable vs. nonpreemptable for the same thing
-MAX_NODES="8,8"
+MAX_NODES="10,20"
 # And at least per type? (Should probably be 0)
 # Also comma-separated.
-MIN_NODES="0,0"
-
-# For a big run:
-NODE_TYPES="i3.8xlarge,r4.8xlarge:0.60"
-MAX_NODES="10,20"
 MIN_NODES="0,0"
 
 # What's our unique run ID? Should be lower-case and start with a letter for maximum compatibility.
@@ -59,8 +54,6 @@ REMOVE_JOBSTORE=1
 # What named graph region should we be operating on?
 # We can do "21", "whole-genome", "MHC", etc.
 INPUT_DATA_MODE="21"
-
-# TODO: Allow using real input data for speed measurement.
 
 # Set a FASTQ to model reads after
 TRAINING_FASTQ="ftp://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/NA12878/NIST_NA12878_HG001_HiSeq_300x/131219_D00360_005_BH814YADXX/Project_RM8398/Sample_U5a/U5a_AGTCAA_L002_R1_007.fastq.gz"
@@ -443,7 +436,6 @@ GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}")
 EVAL_XG_OVERRIDE_BASE_URLS+=("")
 GAM_NAMES+=("pos-control")
 
-
 # We want a negative control with no right variants
 GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minus_${SAMPLE_NAME}")
 EVAL_XG_OVERRIDE_BASE_URLS+=("")
@@ -524,6 +516,7 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         --primary \
         --pos_control "${SAMPLE_NAME}" \
         --neg_control "${SAMPLE_NAME}" \
+        --sample_graph "${SAMPLE_NAME}" \
         --haplo_sample "${SAMPLE_NAME}" \
         "${FILTER_OPTS[@]}" \
         --regions "${GRAPH_REGIONS[@]}" \
