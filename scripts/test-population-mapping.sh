@@ -849,6 +849,8 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
 
 fi
 
+echo "Mapping Test Script Successful"
+
 
 # Cluster (if desired) and trees will get cleaned up by the exit trap
 
