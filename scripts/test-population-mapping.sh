@@ -528,7 +528,6 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         --primary \
         --pos_control "${SAMPLE_NAME}" \
         --neg_control "${SAMPLE_NAME}" \
-        --sample_graph "${SAMPLE_NAME}" \
         --haplo_sample "${SAMPLE_NAME}" \
         --handle_unphased arbitrary \
         "${FILTER_OPTS[@]}" \
