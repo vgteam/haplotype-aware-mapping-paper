@@ -9,7 +9,7 @@ TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@1754878fe59ba140b7
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
 # installed from a non-release Git commit.
-TOIL_APPLIANCE_SELF="quay.io/ucsc_cgl/toil:3.16.0"
+TOIL_APPLIANCE_SELF="quay.io/ucsc_cgl/toil:3.16.0a1.dev2290-c6d3a2a1677ba3928ad5a9ebb6d862b02dd97998"
 
 # What version of awscli do we use? This has to be compatible with the
 # botocore/boto3 that toil-vg and toil can agree on, and each awscli version
@@ -488,12 +488,21 @@ for GRAPH_BASE_URL in "${EVAL_XG_OVERRIDE_BASE_URLS[@]}" ; do
         
     if ! aws s3 ls >/dev/null "${GRAPH_BASE_URL}.xg" ; then
         # The graphs are not ready yet because this override file is missing
-        echo "Need to generate graph file ${GRAPH_BASE_URL}${SUFFIX}"
+        echo "Need to generate graph file ${GRAPH_BASE_URL}.xg"
         GRAPHS_READY=0
         break
     fi
     
     if [[ "${GRAPHS_READY}" == "0" ]] ; then
+        break
+    fi
+done
+
+for SIM_INDEX_URL in "${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_0.xg" "${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_1.xg" ; do
+    # We also need these indexes for sim
+    if ! aws s3 ls >/dev/null "${SIM_INDEX_URL}" ; then
+        echo "Need to generate graph file ${SIM_INDEX_URL}"
+        GRAPHS_READY=0
         break
     fi
 done
@@ -506,6 +515,7 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         "${JOB_TREE_CONSTRUCT}" \
         "$(url_to_store "${GRAPHS_URL}")" \
         --whole_genome_config \
+        --gpbwt_threads \
         "${VG_DOCKER_OPTS[@]}" \
         --vcf "${CONSTRUCT_VCF_URLS[@]}" \
         --fasta "${CONSTRUCT_FASTA_URLS[@]}" \
