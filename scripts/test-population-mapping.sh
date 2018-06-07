@@ -27,12 +27,14 @@ VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.7.0-133-g7e6d1bfd-t178-r
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
 # We need non-preemptable i3.4xlarge at least to get ~3.8TB storage available so the GCSA indexing jobs will have somewhere to run.
 # And we also need more memory (?) than that so some of the later jobs will run.
-NODE_TYPES="i3.8xlarge,r4.8xlarge:0.60"
+# Suggested: i3.8xlarge which is worth ~0.70-0.80, and r4.8xlarge which is worth ~0.60
+# But you need a Toil which can tell them apart
+NODE_TYPES="i3.8xlarge,i3.8xlarge:0.90"
 # How many nodes should we use at most per type?
 # Also comma-separated.
 # TODO: These don't sort right pending https://github.com/BD2KGenomics/toil/issues/2195
 # We can only get the limits right for preemptable vs. nonpreemptable for the same thing
-MAX_NODES="10,20"
+MAX_NODES="10,10"
 # And at least per type? (Should probably be 0)
 # Also comma-separated.
 MIN_NODES="0,0"
@@ -528,6 +530,7 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         --neg_control "${SAMPLE_NAME}" \
         --sample_graph "${SAMPLE_NAME}" \
         --haplo_sample "${SAMPLE_NAME}" \
+        --handle_unphased arbitrary \
         "${FILTER_OPTS[@]}" \
         --regions "${GRAPH_REGIONS[@]}" \
         --gcsa_index \
