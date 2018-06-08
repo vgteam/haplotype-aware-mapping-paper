@@ -428,14 +428,10 @@ GRAPH_URLS+=("${GRAPHS_URL}/primary")
 EVAL_XG_OVERRIDE_BASE_URLS+=("")
 GAM_NAMES+=("primary")
 
-# We want a positive control
-
-# The new style (sample only), when it is ready, will be:
-#GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_sample")
-#EVAL_XG_OVERRIDE_BASE_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}")
-# But for now we do the old style (sample + reference)
-GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}")
-EVAL_XG_OVERRIDE_BASE_URLS+=("")
+# We want a positive control.
+# Use the new style (sample-only sample graph)
+GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_sample")
+EVAL_XG_OVERRIDE_BASE_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_withref")
 GAM_NAMES+=("pos-control")
 
 # We want a negative control with no right variants
@@ -529,6 +525,7 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         --pos_control "${SAMPLE_NAME}" \
         --neg_control "${SAMPLE_NAME}" \
         --haplo_sample "${SAMPLE_NAME}" \
+        --sample_graph "${SAMPLE_NAME}" \
         --handle_unphased arbitrary \
         "${FILTER_OPTS[@]}" \
         --regions "${GRAPH_REGIONS[@]}" \
@@ -600,10 +597,9 @@ for MIN_AF in "${MIN_AFS[@]}" ; do
     MIN_AF_NUM=$((MIN_AF_NUM+1))
 done
 
-# For the positive control, always use the sample + reference XG, without _sample, for calling.
-# We need the primary path in there, even if we did the new-style sample-only graph for mapping.
+# For the positive control, use the sample + reference xg for calling.
 CONDITION_NAMES+=("pos-control-mp-pe")
-XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}.xg")
+XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_withref.xg")
 
 CONDITION_NAMES+=("neg-control-mp-pe")
 XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minus_${SAMPLE_NAME}.xg")
