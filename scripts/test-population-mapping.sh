@@ -431,7 +431,7 @@ GAM_NAMES+=("primary")
 # We want a positive control.
 # Use the new style (sample-only sample graph)
 GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_sample")
-EVAL_XG_OVERRIDE_BASE_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_withref")
+EVAL_XG_OVERRIDE_BASE_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_sample_withref")
 GAM_NAMES+=("pos-control")
 
 # We want a negative control with no right variants
@@ -599,7 +599,7 @@ done
 
 # For the positive control, use the sample + reference xg for calling.
 CONDITION_NAMES+=("pos-control-mp-pe")
-XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_withref.xg")
+XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_sample_withref.xg")
 
 CONDITION_NAMES+=("neg-control-mp-pe")
 XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minus_${SAMPLE_NAME}.xg")
