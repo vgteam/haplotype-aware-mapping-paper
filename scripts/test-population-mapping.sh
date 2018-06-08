@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@1754878fe59ba140b74de2738866d44f1213a0fb#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/vgteam/toil-vg.git@e70d043b3b0483ff028b21b1357d3bd4835fb096#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -21,7 +21,7 @@ TOIL_APPLIANCE_SELF="quay.io/ucsc_cgl/toil:3.16.0a1.dev2290-c6d3a2a1677ba3928ad5
 AWSCLI_PACKAGE="awscli==1.14.70"
 
 # What vg should we use?
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.7.0-133-g7e6d1bfd-t178-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.8.0-77-gb5b3b2f8-t181-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -764,11 +764,11 @@ if [[ -z "${EVALUATION_BED_URL}" ]] ; then
         done
 
         # Remember to use it
-        BED_OPTS+=(--vcfeval_bed_regions "${TEMP_BED}" --clip_only)
+        BED_OPTS+=(--vcfeval_bed_regions "${TEMP_BED}")
     fi
 else
     # We have a bed we need to use for the high-confidence regions
-    BED_OPTS+=(--vcfeval_bed_regions "${EVALUATION_BED_URL}" --clip_only)
+    BED_OPTS+=(--vcfeval_bed_regions "${EVALUATION_BED_URL}")
 fi
 
 # Now the sim calls
@@ -786,6 +786,11 @@ fi
 # --xg_paths "${XG_URLS[@]}" \
 #--call \
 
+# What plot sets do we sue for calling?
+CALL_PLOT_SETS=("primary-mp-pe-surject-fb-clipped,snp1kg-mp-pe-surject-fb-clipped,snp1kg-gbwt-mp-pe-surject-fb-clipped,snp1kg-minaf-mp-pe-surject-fb-clipped,snp1kg-minaf-gbwt-mp-pe-surject-fb-clipped,pos-control-mp-pe-surject-fb-clipped,neg-control-mp-pe-surject-fb-clipped" \
+    "primary-mp-pe-surject-fb-unclipped,snp1kg-mp-pe-surject-fb-unclipped,snp1kg-gbwt-mp-pe-surject-fb-unclipped,snp1kg-minaf-mp-pe-surject-fb-unclipped,snp1kg-minaf-gbwt-mp-pe-surject-fb-unclipped,pos-control-mp-pe-surject-fb-unclipped,neg-control-mp-pe-surject-fb-unclipped" \
+    "bwa-pe-fb-clipped,snp1kg-gbwt-mp-pe-surject-fb-clipped,snp1kg-pe-surject-fb-clipped" \
+    "bwa-pe-fb-unclipped,snp1kg-gbwt-mp-pe-surject-fb-unclipped,snp1kg-pe-surject-fb-unclipped" \)
 
 if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg calleval \
@@ -802,9 +807,7 @@ if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
         --freebayes_fasta "${MAPPING_CALLING_FASTA_URL}" \
         "${BED_OPTS[@]}" \
         --sample_name "${SAMPLE_NAME}" \
-        --plot_sets \
-            "primary-mp-pe-surject-fb,snp1kg-mp-pe-surject-fb,snp1kg-gbwt-mp-pe-surject-fb,snp1kg-minaf-mp-pe-surject-fb,snp1kg-minaf-gbwt-mp-pe-surject-fb,pos-control-mp-pe-surject-fb,neg-control-mp-pe-surject-fb" \
-            "bwa-pe-fb,snp1kg-gbwt-mp-pe-surject-fb,snp1kg-pe-surject-fb" \
+        --plot_sets "${CALL_PLOT_SETS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
 fi
 
@@ -840,9 +843,7 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
             --freebayes_fasta "${MAPPING_CALLING_FASTA_URL}" \
             "${BED_OPTS[@]}" \
             --sample_name "${SAMPLE_NAME}" \
-            --plot_sets \
-                "primary-mp-pe-surject-fb,snp1kg-mp-pe-surject-fb,snp1kg-gbwt-mp-pe-surject-fb,snp1kg-minaf-mp-pe-surject-fb,snp1kg-minaf-gbwt-mp-pe-surject-fb,pos-control-mp-pe-surject-fb,neg-control-mp-pe-surject-fb" \
-                "bwa-pe-fb,snp1kg-gbwt-mp-pe-surject-fb,snp1kg-pe-surject-fb" \
+            --plot_sets "${CALL_PLOT_SETS[@]}" \
             "${TOIL_CLUSTER_OPTS[@]}"
     fi
 
