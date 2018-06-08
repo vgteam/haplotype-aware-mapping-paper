@@ -660,6 +660,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         "primary-mp,snp1kg-mp,snp1kg-gbwt-mp,snp1kg-minaf-mp,snp1kg-minaf-gbwt-mp,pos-control-mp,neg-control-mp" \
         "bwa-mem-pe,snp1kg-gbwt-mp-pe,snp1kg-pe" \
         "bwa-mem,snp1kg-gbwt-mp,snp1kg" \
+        "snp1kg-minaf-mp-pe,snp1kg-minaf1-mp-pe,snp1kg-minaf2-mp-pe,snp1kg-minaf3-mp-pe" \
         "${TOIL_CLUSTER_OPTS[@]}"
 fi
 
@@ -790,7 +791,8 @@ fi
 CALL_PLOT_SETS=("primary-mp-pe-surject-fb-clipped,snp1kg-mp-pe-surject-fb-clipped,snp1kg-gbwt-mp-pe-surject-fb-clipped,snp1kg-minaf-mp-pe-surject-fb-clipped,snp1kg-minaf-gbwt-mp-pe-surject-fb-clipped,pos-control-mp-pe-surject-fb-clipped,neg-control-mp-pe-surject-fb-clipped" \
     "primary-mp-pe-surject-fb-unclipped,snp1kg-mp-pe-surject-fb-unclipped,snp1kg-gbwt-mp-pe-surject-fb-unclipped,snp1kg-minaf-mp-pe-surject-fb-unclipped,snp1kg-minaf-gbwt-mp-pe-surject-fb-unclipped,pos-control-mp-pe-surject-fb-unclipped,neg-control-mp-pe-surject-fb-unclipped" \
     "bwa-pe-fb-clipped,snp1kg-gbwt-mp-pe-surject-fb-clipped,snp1kg-pe-surject-fb-clipped,primary-mp-pe-surject-fb-clipped" \
-    "bwa-pe-fb-unclipped,snp1kg-gbwt-mp-pe-surject-fb-unclipped,snp1kg-pe-surject-fb-unclipped,primary-mp-pe-surject-fb-unclipped" \)
+    "bwa-pe-fb-unclipped,snp1kg-gbwt-mp-pe-surject-fb-unclipped,snp1kg-pe-surject-fb-unclipped,primary-mp-pe-surject-fb-unclipped" \
+    "snp1kg-minaf-mp-pe-surject-fb-clipped,snp1kg-minaf1-mp-pe-surject-fb-clipped,snp1kg-minaf2-mp-pe-surject-fb-clipped,snp1kg-minaf3-mp-pe-surject-fb-clipped")
 
 if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg calleval \
