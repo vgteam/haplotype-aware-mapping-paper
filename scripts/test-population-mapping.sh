@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@f95d2134278666093b4954bc6dc1868c9618c627#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@df6197b66cb368da6532b130ff3da6fc6e55d4b5#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -299,7 +299,7 @@ case "${INPUT_DATA_MODE}" in
         REGION_NAME="test"
         GRAPH_CONTIGS=("ref" "x")
         GRAPH_CONTIG_OFFSETS=("5" "5")
-        GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:6-133" "${GRAPH_CONTIGS[1]}:6-1001")
+        GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:6-1133" "${GRAPH_CONTIGS[1]}:6-1001")
         CONSTRUCT_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref.vcf.gz" "s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/x.vcf.gz")
         CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref.fa" "s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/x.fa")
         MAPPING_CALLING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined-minus-5-bases.fa"
@@ -385,13 +385,13 @@ MASTER_IP="${MASTER_IP//[$'\t\r\n ']}"
 
 # Work out the Toil cluster options that we pass to each Toil/toil-vg run to
 # point it at the cluster. Having --defaultPreemptable makes jobs accept
-# preemptable nodes by default. But some jobs still demand non-preemptable
-# nodes. So we have some r3.8xlarge:0.85 (with a bit) and some r3.8xlarge (on
-# demand).
+# preemptable nodes by default. Also we specify a higher --retryCount to
+# provide more resiliency in the face of AWS nodes going away, which is
+# probably not our jobs' fault.
 TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
     --batchSystem mesos --provisioner=aws "--mesosMaster=${MASTER_IP}:5050" \
     "--nodeTypes=${NODE_TYPES}" --defaultPreemptable "--maxNodes=${MAX_NODES}" "--minNodes=${MIN_NODES}" \
-    --metrics)
+    --metrics --retryCount 10)
 
 
 ########################################################################################################
