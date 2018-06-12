@@ -29,12 +29,13 @@ VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.8.0-77-gb5b3b2f8-t181-run")
 # And we also need more memory (?) than that so some of the later jobs will run.
 # Suggested: i3.8xlarge which is worth ~0.70-0.80, and r4.8xlarge which is worth ~0.60
 # But you need a Toil which can tell them apart
-NODE_TYPES="i3.8xlarge,i3.8xlarge:0.90"
+NODE_TYPES="i3.8xlarge:0.90,i3.8xlarge"
 # How many nodes should we use at most per type?
 # Also comma-separated.
 # TODO: These don't sort right pending https://github.com/BD2KGenomics/toil/issues/2195
-# We can only get the limits right for preemptable vs. nonpreemptable for the same thing
-MAX_NODES="10,10"
+# We can only get the limits right for preemptable vs. nonpreemptable for the same thing.
+# And maybe not even that.
+MAX_NODES="30,30"
 # And at least per type? (Should probably be 0)
 # Also comma-separated.
 MIN_NODES="0,0"
