@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@df6197b66cb368da6532b130ff3da6fc6e55d4b5#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@541bb71bc58f4c6febc11e668699dfb74ed625c5#egg=toil-vg"
 
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
@@ -783,12 +783,11 @@ fi
 # --xg_paths "${XG_URLS[@]}" \
 #--call \
 
-# What plot sets do we sue for calling?
-CALL_PLOT_SETS=("primary-mp-pe-surject-fb-clipped,snp1kg-mp-pe-surject-fb-clipped,snp1kg-gbwt-mp-pe-surject-fb-clipped,snp1kg-minaf-mp-pe-surject-fb-clipped,snp1kg-minaf-gbwt-mp-pe-surject-fb-clipped,pos-control-mp-pe-surject-fb-clipped,neg-control-mp-pe-surject-fb-clipped" \
-    "primary-mp-pe-surject-fb-unclipped,snp1kg-mp-pe-surject-fb-unclipped,snp1kg-gbwt-mp-pe-surject-fb-unclipped,snp1kg-minaf-mp-pe-surject-fb-unclipped,snp1kg-minaf-gbwt-mp-pe-surject-fb-unclipped,pos-control-mp-pe-surject-fb-unclipped,neg-control-mp-pe-surject-fb-unclipped" \
-    "bwa-pe-fb-clipped,snp1kg-gbwt-mp-pe-surject-fb-clipped,snp1kg-pe-surject-fb-clipped,primary-mp-pe-surject-fb-clipped" \
-    "bwa-pe-fb-unclipped,snp1kg-gbwt-mp-pe-surject-fb-unclipped,snp1kg-pe-surject-fb-unclipped,primary-mp-pe-surject-fb-unclipped" \
-    "snp1kg-minaf-mp-pe-surject-fb-clipped,snp1kg-minaf1-mp-pe-surject-fb-clipped,snp1kg-minaf2-mp-pe-surject-fb-clipped,snp1kg-minaf3-mp-pe-surject-fb-clipped")
+# What plot sets do we use for calling?
+# Each will get a normal (clipped) and an unclipped version.
+CALL_PLOT_SETS=("primary-mp-pe-surject-fb,snp1kg-mp-pe-surject-fb,snp1kg-gbwt-mp-pe-surject-fb,snp1kg-minaf-mp-pe-surject-fb,snp1kg-minaf-gbwt-mp-pe-surject-fb,pos-control-mp-pe-surject-fb,neg-control-mp-pe-surject-fb" \
+    "bwa-pe-fb,snp1kg-gbwt-mp-pe-surject-fb,snp1kg-pe-surject-fb,primary-mp-pe-surject-fb" \
+    "snp1kg-minaf-mp-pe-surject-fb,snp1kg-minaf1-mp-pe-surject-fb,snp1kg-minaf2-mp-pe-surject-fb,snp1kg-minaf3-mp-pe-surject-fb")
 
 if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg calleval \
