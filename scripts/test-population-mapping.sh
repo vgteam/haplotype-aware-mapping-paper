@@ -397,13 +397,11 @@ MASTER_IP="${MASTER_IP//[$'\t\r\n ']}"
 
 # Work out the Toil cluster options that we pass to each Toil/toil-vg run to
 # point it at the cluster. Having --defaultPreemptable makes jobs accept
-# preemptable nodes by default. Also we specify a higher --retryCount to
-# provide more resiliency in the face of AWS nodes going away, which is
-# probably not our jobs' fault.
+# preemptable nodes by default.
 TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
     --batchSystem mesos --provisioner=aws "--mesosMaster=${MASTER_IP}:5050" \
     "--nodeTypes=${NODE_TYPES}" --defaultPreemptable "--maxNodes=${MAX_NODES}" "--minNodes=${MIN_NODES}" \
-    --metrics --retryCount 10)
+    --metrics)
 
 ########################################################################################################
 
