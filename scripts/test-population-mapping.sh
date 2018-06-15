@@ -6,10 +6,13 @@ set -ex
 # What toil-vg should we install?
 TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@541bb71bc58f4c6febc11e668699dfb74ed625c5#egg=toil-vg"
 
+# What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
+TOIL_DOCKER_REGISTRY="quay.io/adamnovak"
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
 # installed from a non-release Git commit.
-TOIL_APPLIANCE_SELF="quay.io/ucsc_cgl/toil:3.16.0a1.dev2290-c6d3a2a1677ba3928ad5a9ebb6d862b02dd97998"
+TOIL_APPLIANCE_SELF="${TOIL_DOCKER_REGISTRY}/toil:3.17.0a1-79c241c0eb273a3af6952202e38bd8d0c4bfe05c"
+
 
 # What version of awscli do we use? This has to be compatible with the
 # botocore/boto3 that toil-vg and toil can agree on, and each awscli version
@@ -21,7 +24,7 @@ TOIL_APPLIANCE_SELF="quay.io/ucsc_cgl/toil:3.16.0a1.dev2290-c6d3a2a1677ba3928ad5
 AWSCLI_PACKAGE="awscli==1.14.70"
 
 # What vg should we use?
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.8.0-77-gb5b3b2f8-t181-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.8.0-95-gbe8a124d-t185-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -29,13 +32,13 @@ VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.8.0-77-gb5b3b2f8-t181-run")
 # And we also need more memory (?) than that so some of the later jobs will run.
 # Suggested: i3.8xlarge which is worth ~0.70-0.80, and r4.8xlarge which is worth ~0.60
 # But you need a Toil which can tell them apart
-NODE_TYPES="i3.8xlarge:0.90,i3.8xlarge"
+NODE_TYPES="i3.8xlarge,r4.8xlarge:0.80"
 # How many nodes should we use at most per type?
 # Also comma-separated.
 # TODO: These don't sort right pending https://github.com/BD2KGenomics/toil/issues/2195
 # We can only get the limits right for preemptable vs. nonpreemptable for the same thing.
 # And maybe not even that.
-MAX_NODES="30,30"
+MAX_NODES="10,50"
 # And at least per type? (Should probably be 0)
 # Also comma-separated.
 MIN_NODES="0,0"
@@ -93,6 +96,7 @@ usage() {
     printf "Options:\n\n"
     printf "\t-d\tDo a dry run\n"
     printf "\t-p PACKAGE\tUse the given Python package specifier to install toil-vg.\n"
+    printf "\t-D REGISTRY\tUse the given Docker registry for finding containers (default: ${TOIL_DOCKER_REGISTRY}).\n"
     printf "\t-t CONTAINER\tUse the given Toil container in the cluster (default: ${TOIL_APPLIANCE_SELF}).\n"
     printf "\t-c CLUSTER\tUse the given persistent Toil cluster, which will be created if not present.\n"
     printf "\t-v DOCKER\tUse the given Docker image specifier for vg.\n"
@@ -101,13 +105,17 @@ usage() {
     exit 1
 }
 
-while getopts "hdp:t:c:v:R:r:" o; do
+while getopts "hdp:D:t:c:v:R:r:" o; do
     case "${o}" in
         d)
             PREFIX="echo"
             ;;
         p)
             TOIL_VG_PACKAGE="${OPTARG}"
+            ;;
+        D)
+            TOIL_DOCKER_REGISTRY="${OPTARG}"
+            # TODO: Rewrite TOIL_APPLIANCE_SELF if it isn't going to be overridden.
             ;;
         t)
             TOIL_APPLIANCE_SELF="${OPTARG}"
@@ -155,6 +163,9 @@ if [[ "$#" -gt "0" ]]; then
     exit 1
 fi
 
+# Also work out the environment-variable-setting strings we need.
+TOIL_ENV=(env TOIL_APPLIANCE_SELF="${TOIL_APPLIANCE_SELF}" TOIL_DOCKER_REGISTRY="${TOIL_DOCKER_REGISTRY}")
+
 # Define some cluster management functions
 
 # Return success if the cluster with the given name exists, and failure otherwise
@@ -172,7 +183,7 @@ function start_cluster() {
     echo "Creating cluster ${CLUSTER_NAME}"
     
     # Start the cluster
-    TOIL_APPLIANCE_SELF="${TOIL_APPLIANCE_SELF}" $PREFIX toil launch-cluster "${CLUSTER_NAME}" --leaderNodeType=t2.medium -z us-west-2a "--keyPairName=${KEYPAIR_NAME}"
+    "${TOIL_ENV[@]}" $PREFIX toil launch-cluster "${CLUSTER_NAME}" --leaderNodeType=t2.medium -z us-west-2a "--keyPairName=${KEYPAIR_NAME}"
     
     # We need to manually install git to make pip + git work...
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" apt update
@@ -277,8 +288,8 @@ case "${INPUT_DATA_MODE}" in
         GRAPH_REGIONS=("${GRAPH_CONTIGS[@]}")
         CONSTRUCT_VCF_URLS=()
         for CONTIG in "${GRAPH_CONTIGS[@]}" ; do
-            # Use the per-chromosome VCFs from 1KG
-            CONSTRUCT_VCF_URLS+=("http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr${CONTIG}_GRCh38.genotypes.20170504.vcf.gz")
+            # Use the per-chromosome VCFs from 1KG, which we have mirrored in S3
+            CONSTRUCT_VCF_URLS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/1kg/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr${CONTIG}_GRCh38.genotypes.20170504.vcf.gz")
             # Use the FASTAs from 
         done
         # I built this by stripping the "chr" off of ftp://ftp.1000genomes.ebi.ac.uk//vol1/ftp/technical/reference/GRCh38_reference_genome/GRCh38_full_analysis_set_plus_decoy_hla.fa
@@ -393,7 +404,6 @@ TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
     --batchSystem mesos --provisioner=aws "--mesosMaster=${MASTER_IP}:5050" \
     "--nodeTypes=${NODE_TYPES}" --defaultPreemptable "--maxNodes=${MAX_NODES}" "--minNodes=${MIN_NODES}" \
     --metrics --retryCount 10)
-
 
 ########################################################################################################
 
@@ -510,7 +520,7 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
     # Graphs need to be generated
     
     # Construct the graphs
-    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg construct \
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg construct \
         "${JOB_TREE_CONSTRUCT}" \
         "$(url_to_store "${GRAPHS_URL}")" \
         --whole_genome_config \
@@ -544,7 +554,7 @@ READS_URL="${GRAPHS_URL}/sim-${READ_SEED}-${READ_COUNT}-${READ_CHUNKS}"
 if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then 
     # Now we need to simulate reads from the two haplotypes
     # This will make a "sim.gam"
-    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg sim \
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg sim \
         "${JOB_TREE_SIM}" \
         "${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_0.xg" \
         "${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_1.xg" \
@@ -637,7 +647,7 @@ done
 if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
     
     # Run one big mapeval run that considers all conditions we are interested in
-    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg mapeval \
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg mapeval \
         "${JOB_TREE_MAPEVAL}" \
         "$(url_to_store "${SIM_ALIGNMENTS_URL}")" \
         --whole_genome_config \
@@ -701,7 +711,7 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
     if [[ "${REAL_ALIGNMENTS_READY}" != "1" ]] ; then
     
         # Run a mapeval run just to map the real reads, under all conditions
-        $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg mapeval \
+        $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg mapeval \
             "${JOB_TREE_MAPEVAL}" \
             "$(url_to_store "${REAL_ALIGNMENTS_URL}")" \
             --whole_genome_config \
@@ -791,7 +801,7 @@ CALL_PLOT_SETS=("primary-mp-pe-surject-fb,snp1kg-mp-pe-surject-fb,snp1kg-gbwt-mp
     "snp1kg-minaf-mp-pe-surject-fb,snp1kg-minaf1-mp-pe-surject-fb,snp1kg-minaf2-mp-pe-surject-fb,snp1kg-minaf3-mp-pe-surject-fb")
 
 if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
-    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg calleval \
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg calleval \
         "${JOB_TREE_CALLEVAL}" \
         "$(url_to_store "${SIM_CALLS_URL}")" \
         --whole_genome_config \
@@ -827,7 +837,7 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
     #--call \
 
     if [[ "${REAL_CALLS_READY}" != "1" ]] ; then
-        $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" venv/bin/toil-vg calleval \
+        $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg calleval \
             "${JOB_TREE_CALLEVAL}" \
             "$(url_to_store "${REAL_CALLS_URL}")" \
             --whole_genome_config \
