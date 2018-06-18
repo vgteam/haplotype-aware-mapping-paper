@@ -229,17 +229,17 @@ case "${INPUT_DATA_MODE}" in
         # What FASTA should we use for BWA mapping and Freebayes calling? It needs to have just the selected regions cut out.
         MAPPING_CALLING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         # What VCF should we use for the truth? Must be a single VCF.
-        EVALUATION_VCF_URL="${CONSTRUCT_VCF_URLS[0]}"
+        EVALUATION_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/platinum-genomes/2017-1.0/hg38/hybrid/nochr/hg38.hybrid.21.vcf.gz"
         # And a single FASTA
         EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         # And what high confidence regions should we use there?
         # This can't be specified if we are using regions on GRAPH_REGIONS
-        EVALUATION_BED_URL=""
+        EVALUATION_BED_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/platinum-genomes/2017-1.0/hg38/hybrid/nochr/hg38.hybrid.21.bed.gz"
         
         # We will process an interleaved fastq or a BAM of real reads and evaluate its variant calls too.
         # This can be empty, but these are mutually exclusive
         REAL_FASTQ_URL=""
-        REAL_REALIGN_BAM_URL=""
+        REAL_REALIGN_BAM_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/giab/ftp/data/NA12878/NIST_NA12878_HG001_HiSeq_300x/RMNISTHS_30xdownsample.21.bam"
         ;;
     MHC)
         # Actually do a smaller test
@@ -299,9 +299,9 @@ case "${INPUT_DATA_MODE}" in
         CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/GRCh38.fa.gz")
         MAPPING_CALLING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         # Evaluate against Platinum Genomes/GIAB hybrid
-        EVALUATION_VCF_URL="ftp://platgene_ro:@ussd-ftp.illumina.com/2017-1.0/hg38/hybrid/hg38.hybrid.vcf.gz"
+        EVALUATION_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/platinum-genomes/2017-1.0/hg38/hybrid/nochr/hg38.hybrid.vcf.gz"
         EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
-        EVALUATION_BED_URL="ftp://platgene_ro:@ussd-ftp.illumina.com/2017-1.0/hg38/hybrid/hg38.hybrid.bed.gz"
+        EVALUATION_BED_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/platinum-genomes/2017-1.0/hg38/hybrid/nochr/hg38.hybrid.bed.gz"
         REAL_FASTQ_URL=""
         REAL_REALIGN_BAM_URL="ftp://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/NA12878/NIST_NA12878_HG001_HiSeq_300x/RMNISTHS_30xdownsample.bam"
         ;;
