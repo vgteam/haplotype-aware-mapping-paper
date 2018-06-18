@@ -24,7 +24,7 @@ TOIL_APPLIANCE_SELF="${TOIL_DOCKER_REGISTRY}/toil:3.17.0a1-79c241c0eb273a3af6952
 AWSCLI_PACKAGE="awscli==1.14.70"
 
 # What vg should we use?
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.8.0-95-gbe8a124d-t185-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.8.0-88-gb91d67e1-t184-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -400,7 +400,7 @@ MASTER_IP="${MASTER_IP//[$'\t\r\n ']}"
 TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
     --batchSystem mesos --provisioner=aws "--mesosMaster=${MASTER_IP}:5050" \
     "--nodeTypes=${NODE_TYPES}" --defaultPreemptable "--maxNodes=${MAX_NODES}" "--minNodes=${MIN_NODES}" \
-    --metrics)
+    --metrics --retryCount 3 --stats)
 
 ########################################################################################################
 
@@ -550,6 +550,13 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         "${RESTART_OPTS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
         
+    # Report stats to standard out
+    echo "---BEGIN RUN STATS---"
+    toil stats "${JOB_TREE_CONSTRUCT}"
+    echo "---END RUN STATS---"
+    # Clean up on success
+    toil clean "${JOB_TREE_CONSTRUCT}"
+        
 fi
 
 # Now work out where in there these simulated reads belong
@@ -564,7 +571,8 @@ if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then
         RESTART_OPTS=("--restart")
     fi
     
-    # This will make a "sim.gam"
+    # This will make a "sim.gam".
+    # We provide custom sim options with no substitutions over those specified by the FASTQ.
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg sim \
         "${JOB_TREE_SIM}" \
         "${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_0.xg" \
@@ -579,8 +587,16 @@ if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then
         --seed "${READ_SEED}" \
         --sim_chunks "${READ_CHUNKS}" \
         --fastq "${TRAINING_FASTQ}" \
+        --sim_opts "-p 570 -v 165 -i 0.002" \
         "${RESTART_OPTS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
+        
+    # Report stats to standard out
+    echo "---BEGIN RUN STATS---"
+    toil stats "${JOB_TREE_SIM}"
+    echo "---END RUN STATS---"
+    # Clean up on success
+    toil clean "${JOB_TREE_SIM}"
     
 fi
 
@@ -691,6 +707,13 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         "snp1kg-minaf-mp-pe,snp1kg-minaf1-mp-pe,snp1kg-minaf2-mp-pe,snp1kg-minaf3-mp-pe" \
         "${RESTART_OPTS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
+        
+    # Report stats to standard out
+    echo "---BEGIN RUN STATS---"
+    toil stats "${JOB_TREE_MAPEVAL}"
+    echo "---END RUN STATS---"
+    # Clean up on success
+    toil clean "${JOB_TREE_MAPEVAL}"
 fi
 
 if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
@@ -756,6 +779,14 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
             --skip-eval \
             "${RESTART_OPTS[@]}" \
             "${TOIL_CLUSTER_OPTS[@]}"
+            
+            
+        # Report stats to standard out
+        echo "---BEGIN RUN STATS---"
+        toil stats "${JOB_TREE_MAPEVAL}"
+        echo "---END RUN STATS---"
+        # Clean up on success
+        toil clean "${JOB_TREE_MAPEVAL}"
     fi
 fi
 
@@ -854,6 +885,13 @@ if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
         --plot_sets "${CALL_PLOT_SETS[@]}" \
         "${RESTART_OPTS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
+        
+    # Report stats to standard out
+    echo "---BEGIN RUN STATS---"
+    toil stats "${JOB_TREE_CALLEVAL}"
+    echo "---END RUN STATS---"
+    # Clean up on success
+    toil clean "${JOB_TREE_CALLEVAL}"
 fi
 
 if [ ! -z "${REAL_FASTQ_URL}" ] ; then
@@ -898,6 +936,13 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
             --plot_sets "${CALL_PLOT_SETS[@]}" \
             "${RESTART_OPTS[@]}" \
             "${TOIL_CLUSTER_OPTS[@]}"
+            
+        # Report stats to standard out
+        echo "---BEGIN RUN STATS---"
+        toil stats "${JOB_TREE_CALLEVAL}"
+        echo "---END RUN STATS---"
+        # Clean up on success
+        toil clean "${JOB_TREE_CALLEVAL}"
     fi
 
 fi
