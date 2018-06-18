@@ -52,10 +52,8 @@ CLUSTER_NAME="${RUN_ID}"
 # Is our cluster just for this run, or persistent for multiple runs?
 PERSISTENT_CLUSTER=0
 
-# Should we delete the job store when we exit?
-# We do by default, and if the run finishes successfully.
-# We don't if we're asked to keep it and Toil errors out.
-REMOVE_JOBSTORE=1
+# What stage should we restart from, if any?
+RESTART_STAGE=""
 
 # What named graph region should we be operating on?
 # We can do "21", "whole-genome", "MHC", etc.
@@ -101,11 +99,12 @@ usage() {
     printf "\t-c CLUSTER\tUse the given persistent Toil cluster, which will be created if not present.\n"
     printf "\t-v DOCKER\tUse the given Docker image specifier for vg.\n"
     printf "\t-R RUN_ID\tUse or restart the given run ID.\n"
+    printf "\t-s STAGE\tRestart the given stage (construct, sim, map-sim, map-real, call-sim, call-real).\n"
     printf "\t-r REGION\tRun on the given named region (21, MHC, BRCA1).\n"
     exit 1
 }
 
-while getopts "hdp:D:t:c:v:R:r:" o; do
+while getopts "hdp:D:t:c:v:R:s:r:" o; do
     case "${o}" in
         d)
             PREFIX="echo"
@@ -131,6 +130,9 @@ while getopts "hdp:D:t:c:v:R:r:" o; do
             # This doesn't change the cluster name, which will still be the old run ID if not manually set.
             # That's probably fine.
             RUN_ID="${OPTARG}"
+            ;;
+        s)
+            RESTART_STAGE="${OPTARG}"
             ;;
         r)
             INPUT_DATA_MODE="${OPTARG}"
@@ -352,15 +354,6 @@ REAL_CALLS_URL="${CALLS_URL}/real"
 function clean_up() {
     set +e
     
-    # Delete the Toil intermediates we could have used to restart jobs, since
-    # we have a lot of Toil runs and no good way to restart just one.
-    # Make sure to do the clean from the cluster, because we don't necessarily
-    # know our local SSL will agree with the remote certs.
-    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" toil clean "${JOB_TREE_CONSTRUCT}"
-    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" toil clean "${JOB_TREE_SIM}"
-    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" toil clean "${JOB_TREE_MAPEVAL}"
-    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" toil clean "${JOB_TREE_CALLEVAL}"
-    
     if [[ "${PERSISTENT_CLUSTER}" == "0" ]]; then
         # Destroy the cluster
         destroy_cluster "${CLUSTER_NAME}"
@@ -368,6 +361,12 @@ function clean_up() {
         echo "Leaving cluster ${CLUSTER_NAME} running!"
         echo "Destroy with: toil destroy-cluster '${CLUSTER_NAME}' -z us-west-2a"
     fi
+    
+    echo "Clean with:"
+    echo toil clean "${JOB_TREE_CONSTRUCT}"
+    echo toil clean "${JOB_TREE_SIM}"
+    echo toil clean "${JOB_TREE_MAPEVAL}"
+    echo toil clean "${JOB_TREE_CALLEVAL}"
 }
 trap clean_up EXIT
 
@@ -517,6 +516,12 @@ done
 if [[ "${GRAPHS_READY}" != "1" ]] ; then
     # Graphs need to be generated
     
+    RESTART_OPTS=()
+    if [[ "${RESTART_STAGE}" == "construct" ]] ; then
+        # Restart from this stage
+        RESTART_OPTS=("--restart")
+    fi
+    
     # Construct the graphs
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg construct \
         "${JOB_TREE_CONSTRUCT}" \
@@ -542,6 +547,7 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         --xg_index \
         --gbwt_index \
         --snarls_index \
+        "${RESTART_OPTS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
         
 fi
@@ -551,6 +557,13 @@ READS_URL="${GRAPHS_URL}/sim-${READ_SEED}-${READ_COUNT}-${READ_CHUNKS}"
 
 if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then 
     # Now we need to simulate reads from the two haplotypes
+    
+    RESTART_OPTS=()
+    if [[ "${RESTART_STAGE}" == "sim" ]] ; then
+        # Restart from this stage
+        RESTART_OPTS=("--restart")
+    fi
+    
     # This will make a "sim.gam"
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg sim \
         "${JOB_TREE_SIM}" \
@@ -566,9 +579,13 @@ if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then
         --seed "${READ_SEED}" \
         --sim_chunks "${READ_CHUNKS}" \
         --fastq "${TRAINING_FASTQ}" \
+        "${RESTART_OPTS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
     
 fi
+
+# TODO: Stop here and upgrade vg to one with a good mpmap
+exit
 
 # Work out what alignment condition GAM names we hope to generate, with tags
 CONDITION_NAMES=()
@@ -644,6 +661,12 @@ done
 
 if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
     
+    RESTART_OPTS=()
+    if [[ "${RESTART_STAGE}" == "map-sim" ]] ; then
+        # Restart from this stage
+        RESTART_OPTS=("--restart")
+    fi
+    
     # Run one big mapeval run that considers all conditions we are interested in
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg mapeval \
         "${JOB_TREE_MAPEVAL}" \
@@ -666,6 +689,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         "bwa-mem-pe,snp1kg-gbwt-mp-pe,snp1kg-pe" \
         "bwa-mem,snp1kg-gbwt-mp,snp1kg" \
         "snp1kg-minaf-mp-pe,snp1kg-minaf1-mp-pe,snp1kg-minaf2-mp-pe,snp1kg-minaf3-mp-pe" \
+        "${RESTART_OPTS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
 fi
 
@@ -708,6 +732,12 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
 
     if [[ "${REAL_ALIGNMENTS_READY}" != "1" ]] ; then
     
+        RESTART_OPTS=()
+        if [[ "${RESTART_STAGE}" == "map-real" ]] ; then
+            # Restart from this stage
+            RESTART_OPTS=("--restart")
+        fi
+    
         # Run a mapeval run just to map the real reads, under all conditions
         $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg mapeval \
             "${JOB_TREE_MAPEVAL}" \
@@ -724,6 +754,7 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
             --bwa --fasta "${MAPPING_CALLING_FASTA_URL}" \
             "${DATA_OPTS[@]}" \
             --skip-eval \
+            "${RESTART_OPTS[@]}" \
             "${TOIL_CLUSTER_OPTS[@]}"
     fi
 fi
@@ -799,6 +830,13 @@ CALL_PLOT_SETS=("primary-mp-pe-surject-fb,snp1kg-mp-pe-surject-fb,snp1kg-gbwt-mp
     "snp1kg-minaf-mp-pe-surject-fb,snp1kg-minaf1-mp-pe-surject-fb,snp1kg-minaf2-mp-pe-surject-fb,snp1kg-minaf3-mp-pe-surject-fb")
 
 if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
+
+    RESTART_OPTS=()
+    if [[ "${RESTART_STAGE}" == "call-sim" ]] ; then
+        # Restart from this stage
+        RESTART_OPTS=("--restart")
+    fi
+
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg calleval \
         "${JOB_TREE_CALLEVAL}" \
         "$(url_to_store "${SIM_CALLS_URL}")" \
@@ -814,6 +852,7 @@ if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
         "${BED_OPTS[@]}" \
         --sample_name "${SAMPLE_NAME}" \
         --plot_sets "${CALL_PLOT_SETS[@]}" \
+        "${RESTART_OPTS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
 fi
 
@@ -835,6 +874,13 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
     #--call \
 
     if [[ "${REAL_CALLS_READY}" != "1" ]] ; then
+    
+        RESTART_OPTS=()
+        if [[ "${RESTART_STAGE}" == "call-real" ]] ; then
+            # Restart from this stage
+            RESTART_OPTS=("--restart")
+        fi
+    
         $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg calleval \
             "${JOB_TREE_CALLEVAL}" \
             "$(url_to_store "${REAL_CALLS_URL}")" \
@@ -850,6 +896,7 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
             "${BED_OPTS[@]}" \
             --sample_name "${SAMPLE_NAME}" \
             --plot_sets "${CALL_PLOT_SETS[@]}" \
+            "${RESTART_OPTS[@]}" \
             "${TOIL_CLUSTER_OPTS[@]}"
     fi
 
