@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@541bb71bc58f4c6febc11e668699dfb74ed625c5#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@4cbb4fa8622263361b8dd33b01020bc02af2b284#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/adamnovak"
@@ -470,8 +470,8 @@ done
 GRAPHS_READY=1
 for GRAPH_BASE_URL in "${GRAPH_URLS[@]}" ; do
     # For each graph we want to run
-    for SUFFIX in ".xg" ".gcsa" ".gcsa.lcp" ".snarls" ; do
-        # For each file required for the graph
+    for SUFFIX in ".xg" ".gcsa" ".gcsa.lcp" ; do
+        # For each file absolutely required for the graph
         
         if ! aws s3 ls >/dev/null "${GRAPH_BASE_URL}${SUFFIX}" ; then
             # The graphs are not ready yet because this file is missing
@@ -599,9 +599,6 @@ if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then
     toil clean "${JOB_TREE_SIM}"
     
 fi
-
-# TODO: Stop here and upgrade vg to one with a good mpmap
-exit
 
 # Work out what alignment condition GAM names we hope to generate, with tags
 CONDITION_NAMES=()
