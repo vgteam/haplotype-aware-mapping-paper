@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@4cbb4fa8622263361b8dd33b01020bc02af2b284#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@481b86ca0d37f5b713cf7c3b7aabd565bfb92cb3#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/adamnovak"
@@ -99,7 +99,7 @@ usage() {
     printf "\t-c CLUSTER\tUse the given persistent Toil cluster, which will be created if not present.\n"
     printf "\t-v DOCKER\tUse the given Docker image specifier for vg.\n"
     printf "\t-R RUN_ID\tUse or restart the given run ID.\n"
-    printf "\t-s STAGE\tRestart the given stage (construct, sim, map-sim, map-real, call-sim, call-real).\n"
+    printf "\t-s STAGE\tRestart the given stage (construct, construct-sample, sim, map-sim, map-real, call-sim, call-real).\n"
     printf "\t-r REGION\tRun on the given named region (21, MHC, BRCA1).\n"
     exit 1
 }
@@ -229,6 +229,7 @@ case "${INPUT_DATA_MODE}" in
         # What FASTA should we use for BWA mapping and Freebayes calling? It needs to have just the selected regions cut out.
         MAPPING_CALLING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         # What VCF should we use for the truth? Must be a single VCF.
+        # Used for evaluation and also for sample graph construction and read simulation.
         EVALUATION_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/platinum-genomes/2017-1.0/hg38/hybrid/nochr/hg38.hybrid.21.vcf.gz"
         # And a single FASTA
         EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
@@ -407,15 +408,12 @@ TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
 # Now we are set up to do the actual experiment.
 
 # Decide what graphs to run
+# Note that the sample graph positive control is added separately.
 GRAPH_URLS=()
-# Each graph can have a second basename associated, to override the XG for evaluation
-# This lets us use a sample graph that ignores unused reference bases as the positive mapping control
-EVAL_XG_OVERRIDE_BASE_URLS=()
 GAM_NAMES=()
 
 # We want the actual graph with its indexes (minus the sample under test)
 GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter")
-EVAL_XG_OVERRIDE_BASE_URLS+=("")
 GAM_NAMES+=("snp1kg")
 
 MIN_AF_NUM=0
@@ -427,24 +425,15 @@ for MIN_AF in "${MIN_AFS[@]}" ; do
         GAM_NAMES+=("snp1kg-minaf${MIN_AF_NUM}")      
     fi
     GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}")
-    EVAL_XG_OVERRIDE_BASE_URLS+=("")
     MIN_AF_NUM=$((MIN_AF_NUM+1))
 done
 
 # We want a primary control
 GRAPH_URLS+=("${GRAPHS_URL}/primary")
-EVAL_XG_OVERRIDE_BASE_URLS+=("")
 GAM_NAMES+=("primary")
-
-# We want a positive control.
-# Use the new style (sample-only sample graph)
-GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_sample")
-EVAL_XG_OVERRIDE_BASE_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_sample_withref")
-GAM_NAMES+=("pos-control")
 
 # We want a negative control with no right variants
 GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minus_${SAMPLE_NAME}")
-EVAL_XG_OVERRIDE_BASE_URLS+=("")
 GAM_NAMES+=("neg-control")
 
 # Compose actual index bases by zipping
@@ -453,15 +442,7 @@ GRAPH_NUMBER=0
 while [[ "${GRAPH_NUMBER}" -lt "${#GRAPH_URLS[@]}" ]] ; do
     # For each graph, get its graph and override URLs
     GRAPH_URL="${GRAPH_URLS[${GRAPH_NUMBER}]}"
-    XG_OVERRIDE_URL="${EVAL_XG_OVERRIDE_BASE_URLS[${GRAPH_NUMBER}]}"
-    
-    if [[ "${XG_OVERRIDE_URL}" == "" ]] ; then
-        # There is no override, so use just the graph URL
-        INDEX_BASES+=("${GRAPH_URL}")
-    else
-        # Comma-separate the graph and index override URLs
-        INDEX_BASES+=("${GRAPH_URL},${XG_OVERRIDE_URL}")
-    fi
+    INDEX_BASES+=("${GRAPH_URL}")
     
     ((GRAPH_NUMBER=${GRAPH_NUMBER}+1))
 done
@@ -486,33 +467,6 @@ for GRAPH_BASE_URL in "${GRAPH_URLS[@]}" ; do
     fi
 done
 
-for GRAPH_BASE_URL in "${EVAL_XG_OVERRIDE_BASE_URLS[@]}" ; do
-    if [[ "${GRAPH_BASE_URL}" == "" ]] ; then
-        # Skip empty overrides
-        continue
-    fi
-        
-    if ! aws s3 ls >/dev/null "${GRAPH_BASE_URL}.xg" ; then
-        # The graphs are not ready yet because this override file is missing
-        echo "Need to generate graph file ${GRAPH_BASE_URL}.xg"
-        GRAPHS_READY=0
-        break
-    fi
-    
-    if [[ "${GRAPHS_READY}" == "0" ]] ; then
-        break
-    fi
-done
-
-for SIM_INDEX_URL in "${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_0.xg" "${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_1.xg" ; do
-    # We also need these indexes for sim
-    if ! aws s3 ls >/dev/null "${SIM_INDEX_URL}" ; then
-        echo "Need to generate graph file ${SIM_INDEX_URL}"
-        GRAPHS_READY=0
-        break
-    fi
-done
-
 if [[ "${GRAPHS_READY}" != "1" ]] ; then
     # Graphs need to be generated
     
@@ -527,7 +481,6 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         "${JOB_TREE_CONSTRUCT}" \
         "$(url_to_store "${GRAPHS_URL}")" \
         --whole_genome_config \
-        --gpbwt_threads \
         "${VG_DOCKER_OPTS[@]}" \
         --vcf "${CONSTRUCT_VCF_URLS[@]}" \
         --fasta "${CONSTRUCT_FASTA_URLS[@]}" \
@@ -538,6 +491,75 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         --primary \
         --pos_control "${SAMPLE_NAME}" \
         --neg_control "${SAMPLE_NAME}" \
+        --handle_unphased arbitrary \
+        "${FILTER_OPTS[@]}" \
+        --regions "${GRAPH_REGIONS[@]}" \
+        --gcsa_index \
+        --xg_index \
+        --gbwt_index \
+        --snarls_index \
+        "${RESTART_OPTS[@]}" \
+        "${TOIL_CLUSTER_OPTS[@]}"
+        
+    # Report stats to standard out
+    echo "---BEGIN RUN STATS---"
+    toil stats "${JOB_TREE_CONSTRUCT}"
+    echo "---END RUN STATS---"
+    # Clean up on success
+    toil clean "${JOB_TREE_CONSTRUCT}"
+        
+fi
+
+
+
+# Now we run the sample graph positive control, and make the single-haplotype XGs we will use for read simulation.
+SAMPLE_GRAPHS_READY=1
+# For each graph we want to run
+for SUFFIX in ".xg" ".gcsa" ".gcsa.lcp" ; do
+    # For each file absolutely required for the graph
+    
+    if ! aws s3 ls >/dev/null "${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample${SUFFIX}" ; then
+        # The sample graph is not ready yet because this file is missing
+        echo "Need to generate sample graph file ${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample${SUFFIX}"
+        SAMPLE_GRAPHS_READY=0
+        break
+    fi
+done
+
+if ! aws s3 ls >/dev/null "${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample_withref.xg" ; then
+    # The sample graph withref xg is missing
+    echo "Need to generate sample graph file ${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample_withref.xg"
+    SAMPLE_GRAPHS_READY=0
+fi
+
+for SIM_INDEX_URL in "${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_0.xg" "${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_1.xg" "${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_haplo.xg" ; do
+    # We also need these indexes for sim
+    if ! aws s3 ls >/dev/null "${SIM_INDEX_URL}" ; then
+        echo "Need to generate sample graph file ${SIM_INDEX_URL}"
+        SAMPLE_GRAPHS_READY=0
+        break
+    fi
+done
+
+if [[ "${SAMPLE_GRAPHS_READY}" != "1" ]] ; then
+    # Graphs need to be generated
+    
+    RESTART_OPTS=()
+    if [[ "${RESTART_STAGE}" == "construct-sample" ]] ; then
+        # Restart from this stage
+        RESTART_OPTS=("--restart")
+    fi
+    
+    # Construct the graphs
+    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg construct \
+        "${JOB_TREE_CONSTRUCT}" \
+        "$(url_to_store "${GRAPHS_URL}")" \
+        --whole_genome_config \
+        "${VG_DOCKER_OPTS[@]}" \
+        --vcf "${EVALUATION_VCF_URL}" \
+        --fasta "${EVALUATION_FASTA_URL}" \
+        --out_name "platinum-${REGION_NAME}" \
+        --alt_paths \
         --haplo_sample "${SAMPLE_NAME}" \
         --sample_graph "${SAMPLE_NAME}" \
         --handle_unphased arbitrary \
@@ -559,8 +581,12 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         
 fi
 
+# Actually use the sample graph positive control, with evaluation XG override
+INDEX_BASES+=("${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample,${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample_withref")
+GAM_NAMES+=("pos-control")
+
 # Now work out where in there these simulated reads belong
-READS_URL="${GRAPHS_URL}/sim-${READ_SEED}-${READ_COUNT}-${READ_CHUNKS}"
+READS_URL="${GRAPHS_URL}/sim-${SAMPLE_NAME}-${READ_SEED}-${READ_COUNT}-${READ_CHUNKS}"
 
 if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then 
     # Now we need to simulate reads from the two haplotypes
@@ -575,13 +601,13 @@ if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then
     # We provide custom sim options with no substitutions over those specified by the FASTQ.
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg sim \
         "${JOB_TREE_SIM}" \
-        "${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_0.xg" \
-        "${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_1.xg" \
+        "${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_0.xg" \
+        "${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_1.xg" \
         "${READ_COUNT}" \
         "$(url_to_store "${READS_URL}")" \
         --whole_genome_config \
         "${VG_DOCKER_OPTS[@]}" \
-        --annotate_xg "${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_haplo.xg" \
+        --annotate_xg "${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_haplo.xg" \
         --gam \
         --fastq_out \
         --seed "${READ_SEED}" \
@@ -599,6 +625,9 @@ if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then
     toil clean "${JOB_TREE_SIM}"
     
 fi
+
+# TODO: Stop exiting when I have the right Docker for mpmap
+exit
 
 # Work out what alignment condition GAM names we hope to generate, with tags
 CONDITION_NAMES=()
@@ -638,7 +667,7 @@ done
 
 # For the positive control, use the sample + reference xg for calling.
 CONDITION_NAMES+=("pos-control-mp-pe")
-XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_${SAMPLE_NAME}_sample_withref.xg")
+XG_URLS+=("${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample_withref.xg")
 
 CONDITION_NAMES+=("neg-control-mp-pe")
 XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minus_${SAMPLE_NAME}.xg")
