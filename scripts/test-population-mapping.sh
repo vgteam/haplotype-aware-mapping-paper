@@ -563,7 +563,6 @@ if [[ "${SAMPLE_GRAPHS_READY}" != "1" ]] ; then
         --haplo_sample "${SAMPLE_NAME}" \
         --sample_graph "${SAMPLE_NAME}" \
         --handle_unphased arbitrary \
-        "${FILTER_OPTS[@]}" \
         --regions "${GRAPH_REGIONS[@]}" \
         --gcsa_index \
         --xg_index \
