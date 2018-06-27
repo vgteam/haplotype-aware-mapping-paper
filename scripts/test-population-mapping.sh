@@ -24,7 +24,7 @@ TOIL_APPLIANCE_SELF="${TOIL_DOCKER_REGISTRY}/toil:3.17.0a1-79c241c0eb273a3af6952
 AWSCLI_PACKAGE="awscli==1.14.70"
 
 # What vg should we use?
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.8.0-88-gb91d67e1-t184-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.8.0-132-gfec51877-t188-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -624,9 +624,6 @@ if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then
     toil clean "${JOB_TREE_SIM}"
     
 fi
-
-# TODO: Stop exiting when I have the right Docker for mpmap
-exit
 
 # Work out what alignment condition GAM names we hope to generate, with tags
 CONDITION_NAMES=()
