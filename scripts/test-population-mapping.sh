@@ -24,7 +24,7 @@ TOIL_APPLIANCE_SELF="${TOIL_DOCKER_REGISTRY}/toil:3.17.0a1-79c241c0eb273a3af6952
 AWSCLI_PACKAGE="awscli==1.14.70"
 
 # What vg should we use?
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:v1.8.0-132-gfec51877-t188-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -397,10 +397,11 @@ MASTER_IP="${MASTER_IP//[$'\t\r\n ']}"
 
 # Work out the Toil cluster options that we pass to each Toil/toil-vg run to
 # point it at the cluster. Having --defaultPreemptable makes jobs accept
-# preemptable nodes by default.
+# preemptable nodes by default. We also need --nodeStorage to specify disk for EBS nodes.
 TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
     --batchSystem mesos --provisioner=aws "--mesosMaster=${MASTER_IP}:5050" \
-    "--nodeTypes=${NODE_TYPES}" --defaultPreemptable "--maxNodes=${MAX_NODES}" "--minNodes=${MIN_NODES}" \
+    "--nodeTypes=${NODE_TYPES}" "--maxNodes=${MAX_NODES}" "--minNodes=${MIN_NODES}" \
+    --nodeStorage 200 --defaultPreemptable \
     --metrics --retryCount 3 --stats)
 
 ########################################################################################################
