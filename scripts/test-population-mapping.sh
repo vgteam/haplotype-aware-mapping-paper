@@ -30,14 +30,13 @@ VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-r
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
 # We need non-preemptable i3.4xlarge at least to get ~3.8TB storage available so the GCSA indexing jobs will have somewhere to run.
 # And we also need more memory (?) than that so some of the later jobs will run.
-# Suggested: i3.8xlarge which is worth ~0.70-0.80, and r4.8xlarge which is worth ~0.60
+# Suggested: i3.8xlarge which is worth ~0.70-0.80 (2.something on-demand), and r4.8xlarge which is worth ~0.60
+# If using r4 we also need to make sure --nodeStorage, which sets EBS volume size for EBS nodes, is sufficient.
+# We can also use r3.8xlarge which are cheaper (~0.50) and come with faster disks anyway.
 # But you need a Toil which can tell them apart
-NODE_TYPES="i3.8xlarge,r4.8xlarge:0.80"
+NODE_TYPES="i3.8xlarge,r3.8xlarge:0.50"
 # How many nodes should we use at most per type?
 # Also comma-separated.
-# TODO: These don't sort right pending https://github.com/BD2KGenomics/toil/issues/2195
-# We can only get the limits right for preemptable vs. nonpreemptable for the same thing.
-# And maybe not even that.
 MAX_NODES="10,50"
 # And at least per type? (Should probably be 0)
 # Also comma-separated.
