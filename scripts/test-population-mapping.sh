@@ -24,7 +24,9 @@ TOIL_APPLIANCE_SELF="${TOIL_DOCKER_REGISTRY}/toil:3.17.0a1-79c241c0eb273a3af6952
 AWSCLI_PACKAGE="awscli==1.14.70"
 
 # What vg should we use?
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run")
+# Update this tag to change the Docker that will be used by a restart.
+# Just editing the script won't do it; the tag name lives in the Toil job store.
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/adamnovak/vg:wholegenome")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
