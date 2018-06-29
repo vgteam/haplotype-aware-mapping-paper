@@ -26,6 +26,10 @@ AWSCLI_PACKAGE="awscli==1.14.70"
 # What vg should we use?
 # Update this tag to change the Docker that will be used by a restart.
 # Just editing the script won't do it; the tag name lives in the Toil job store.
+# To update, do something like:
+# docker pull quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run
+# docker tag quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run quay.io/adamnovak/vg:wholegenome
+# docker push quay.io/adamnovak/vg:wholegenome
 VG_DOCKER_OPTS=("--vg_docker" "quay.io/adamnovak/vg:wholegenome")
 
 # What node types should we use?
