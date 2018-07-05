@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@3c1193269bcc11def3592b2947e0e36426403ca1#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@5d09bee065170baaeb001d63cc4877ea6c2b53b4#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/adamnovak"
@@ -743,6 +743,9 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
     # Clean up on success
     toil clean "${JOB_TREE_MAPEVAL}"
 fi
+
+# Exit after sim read alignments, so we can compare results so far against other runs.
+exit
 
 if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
     # We can also do alignments of real data
