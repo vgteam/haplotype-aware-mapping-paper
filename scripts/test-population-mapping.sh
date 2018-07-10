@@ -230,9 +230,9 @@ case "${INPUT_DATA_MODE}" in
         GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}")
         # Define the VCF and FASTA basenames. We assume each VCF has a TBI.
         # If multiple files are used they must match up with the contigs.
-        # Note that this is hg19 and not GRCh38
-        CONSTRUCT_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg19-CHR21.vcf.gz")
-        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/CHR21.fa")
+        # We now use GRCh38 for compatibility with Platinum Genomes
+        CONSTRUCT_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/1kg/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr21_GRCh38.genotypes.20170504.vcf.gz")
+        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/GRCh38.fa.gz")
         # What FASTA should we use for BWA mapping and Freebayes calling? It needs to have just the selected regions cut out.
         MAPPING_CALLING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         # What VCF should we use for the truth? Must be a single VCF.
