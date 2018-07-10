@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@fdf73ef9ddd82ed3a21cb32d5a2d2461ec9a2b99#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@4b9129b9cf3caae14f971539cfcd60559e671559#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/adamnovak"
@@ -30,7 +30,7 @@ AWSCLI_PACKAGE="awscli==1.14.70"
 # docker pull quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run
 # docker tag quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run quay.io/adamnovak/vg:wholegenome
 # docker push quay.io/adamnovak/vg:wholegenome
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.8.0-148-g8d6c1a82-t197-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/adamnovak/vg:wholegenome")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -213,6 +213,8 @@ case "${INPUT_DATA_MODE}" in
     21)
         # Do a lot of reads
         READ_COUNT="10000000"
+        # Evaluate on all of them
+        READ_DOWNSAMPLE_PORTION="1.0"
         # In several chunks
         READ_CHUNKS="32"
         # Define a region name to process. This sets the name that the graphs and
@@ -250,6 +252,7 @@ case "${INPUT_DATA_MODE}" in
     MHC)
         # Actually do a smaller test
         READ_COUNT="100000"
+        READ_DOWNSAMPLE_PORTION="1.0"
         READ_CHUNKS="2"
         REGION_NAME="MHC"
         GRAPH_CONTIGS=("6")
@@ -268,6 +271,7 @@ case "${INPUT_DATA_MODE}" in
     BRCA1)
         # Do just BRCA1 and a very few reads
         READ_COUNT="20000"
+        READ_DOWNSAMPLE_PORTION="1.0"
         READ_CHUNKS="2"
         REGION_NAME="BRCA1"
         GRAPH_CONTIGS=("17")
@@ -288,6 +292,8 @@ case "${INPUT_DATA_MODE}" in
         # But it would be good to have sim calling results too
         # So simulate 500m read pairs, which even at 100 bp/read is ~30x coverage
         READ_COUNT="500000000"
+        # Only look at 2% of that (10,000,000 pairs)
+        READ_DOWNSAMPLE_PORTION="0.02"
         READ_CHUNKS="32"
         REGION_NAME="WG38"
         # We do all the chroms except Y because NA12878 is XX AFAIK
@@ -315,6 +321,7 @@ case "${INPUT_DATA_MODE}" in
         # Do a couple test regions of fake chromosomes
         # Exercise both multi-chromosome and offset capabilities
         READ_COUNT="1000"
+        READ_DOWNSAMPLE_PORTION="0.90"
         READ_CHUNKS="2"
         REGION_NAME="test"
         GRAPH_CONTIGS=("ref" "x")
