@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@36453ef7f2ba55cc6d9aa0b59056580196f9e5fd#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@fdf73ef9ddd82ed3a21cb32d5a2d2461ec9a2b99#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/adamnovak"
@@ -30,7 +30,7 @@ AWSCLI_PACKAGE="awscli==1.14.70"
 # docker pull quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run
 # docker tag quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run quay.io/adamnovak/vg:wholegenome
 # docker push quay.io/adamnovak/vg:wholegenome
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.8.0-147-g5fb68ebe-t196-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.8.0-148-g8d6c1a82-t197-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
