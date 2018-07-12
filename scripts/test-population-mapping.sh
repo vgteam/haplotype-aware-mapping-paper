@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@4b9129b9cf3caae14f971539cfcd60559e671559#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@66c6ad686292d9abcc16298fe29c03614a2eeab6#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/adamnovak"
@@ -213,9 +213,9 @@ case "${INPUT_DATA_MODE}" in
     21)
         # Do a lot of reads
         READ_COUNT="10000000"
-        # Evaluate on all of them
-        READ_DOWNSAMPLE_PORTION="1.0"
-        # In several chunks
+        # Evaluate on some of them
+        READ_DOWNSAMPLE_PORTION="0.5"
+        # Simulate in several chunks
         READ_CHUNKS="32"
         # Define a region name to process. This sets the name that the graphs and
         # indexes will be saved/looked for under.
@@ -343,15 +343,9 @@ case "${INPUT_DATA_MODE}" in
         exit 1
 esac
 
-# Where do we store our job trees under?
-JOB_TREE_BASE="aws:us-west-2:${RUN_ID}"
-
-# What trees should we use for each step? Work it out now so cleanup can clean them later.
-# Note that job tree names can't have / so we use -
-JOB_TREE_CONSTRUCT="${JOB_TREE_BASE}-construct"
-JOB_TREE_SIM="${JOB_TREE_BASE}-sim"
-JOB_TREE_MAPEVAL="${JOB_TREE_BASE}-mapeval"
-JOB_TREE_CALLEVAL="${JOB_TREE_BASE}-calleval"
+# Where do we store our job tree?
+# We only need one job tree because only one Toil run runs at a time.
+JOB_TREE="aws:us-west-2:${RUN_ID}"
 
 echo "Running run ${RUN_ID} as ${KEYPAIR_NAME} on ${GRAPH_REGIONS[@]} for ${READ_COUNT} reads into ${ALIGNMENTS_URL}"
 
@@ -376,10 +370,7 @@ function clean_up() {
     fi
     
     echo "Clean with:"
-    echo toil clean "${JOB_TREE_CONSTRUCT}"
-    echo toil clean "${JOB_TREE_SIM}"
-    echo toil clean "${JOB_TREE_MAPEVAL}"
-    echo toil clean "${JOB_TREE_CALLEVAL}"
+    echo toil clean "${JOB_TREE}"
 }
 trap clean_up EXIT
 
@@ -491,7 +482,7 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
     
     # Construct the graphs
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg construct \
-        "${JOB_TREE_CONSTRUCT}" \
+        "${JOB_TREE}" \
         "$(url_to_store "${GRAPHS_URL}")" \
         --whole_genome_config \
         "${VG_DOCKER_OPTS[@]}" \
@@ -516,10 +507,10 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         
     # Report stats to standard out
     echo "---BEGIN RUN STATS---"
-    toil stats "${JOB_TREE_CONSTRUCT}"
+    toil stats "${JOB_TREE}"
     echo "---END RUN STATS---"
     # Clean up on success
-    toil clean "${JOB_TREE_CONSTRUCT}"
+    toil clean "${JOB_TREE}"
         
 fi
 
@@ -565,7 +556,7 @@ if [[ "${SAMPLE_GRAPHS_READY}" != "1" ]] ; then
     
     # Construct the graphs
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg construct \
-        "${JOB_TREE_CONSTRUCT}" \
+        "${JOB_TREE}" \
         "$(url_to_store "${GRAPHS_URL}")" \
         --whole_genome_config \
         "${VG_DOCKER_OPTS[@]}" \
@@ -586,10 +577,10 @@ if [[ "${SAMPLE_GRAPHS_READY}" != "1" ]] ; then
         
     # Report stats to standard out
     echo "---BEGIN RUN STATS---"
-    toil stats "${JOB_TREE_CONSTRUCT}"
+    toil stats "${JOB_TREE}"
     echo "---END RUN STATS---"
     # Clean up on success
-    toil clean "${JOB_TREE_CONSTRUCT}"
+    toil clean "${JOB_TREE}"
         
 fi
 
@@ -612,7 +603,7 @@ if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then
     # This will make a "sim.gam".
     # We provide custom sim options with no substitutions over those specified by the FASTQ.
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg sim \
-        "${JOB_TREE_SIM}" \
+        "${JOB_TREE}" \
         "${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_0.xg" \
         "${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_1.xg" \
         "${READ_COUNT}" \
@@ -631,10 +622,10 @@ if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then
         
     # Report stats to standard out
     echo "---BEGIN RUN STATS---"
-    toil stats "${JOB_TREE_SIM}"
+    toil stats "${JOB_TREE}"
     echo "---END RUN STATS---"
     # Clean up on success
-    toil clean "${JOB_TREE_SIM}"
+    toil clean "${JOB_TREE}"
     
 fi
 
@@ -720,7 +711,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
     
     # Run one big mapeval run that considers all conditions we are interested in
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg mapeval \
-        "${JOB_TREE_MAPEVAL}" \
+        "${JOB_TREE}" \
         "$(url_to_store "${SIM_ALIGNMENTS_URL}")" \
         --whole_genome_config \
         "${VG_DOCKER_OPTS[@]}" \
@@ -745,10 +736,10 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         
     # Report stats to standard out
     echo "---BEGIN RUN STATS---"
-    toil stats "${JOB_TREE_MAPEVAL}"
+    toil stats "${JOB_TREE}"
     echo "---END RUN STATS---"
     # Clean up on success
-    toil clean "${JOB_TREE_MAPEVAL}"
+    toil clean "${JOB_TREE}"
 fi
 
 # Exit after sim read alignments, so we can compare results so far against other runs.
@@ -801,7 +792,7 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
     
         # Run a mapeval run just to map the real reads, under all conditions
         $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg mapeval \
-            "${JOB_TREE_MAPEVAL}" \
+            "${JOB_TREE}" \
             "$(url_to_store "${REAL_ALIGNMENTS_URL}")" \
             --whole_genome_config \
             "${VG_DOCKER_OPTS[@]}" \
@@ -821,10 +812,10 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
             
         # Report stats to standard out
         echo "---BEGIN RUN STATS---"
-        toil stats "${JOB_TREE_MAPEVAL}"
+        toil stats "${JOB_TREE}"
         echo "---END RUN STATS---"
         # Clean up on success
-        toil clean "${JOB_TREE_MAPEVAL}"
+        toil clean "${JOB_TREE}"
     fi
 fi
 
@@ -907,7 +898,7 @@ if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
     fi
 
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg calleval \
-        "${JOB_TREE_CALLEVAL}" \
+        "${JOB_TREE}" \
         "$(url_to_store "${SIM_CALLS_URL}")" \
         --whole_genome_config \
         "${VG_DOCKER_OPTS[@]}" \
@@ -926,10 +917,10 @@ if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
         
     # Report stats to standard out
     echo "---BEGIN RUN STATS---"
-    toil stats "${JOB_TREE_CALLEVAL}"
+    toil stats "${JOB_TREE}"
     echo "---END RUN STATS---"
     # Clean up on success
-    toil clean "${JOB_TREE_CALLEVAL}"
+    toil clean "${JOB_TREE}"
 fi
 
 if [ ! -z "${REAL_FASTQ_URL}" ] ; then
@@ -958,7 +949,7 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
         fi
     
         $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg calleval \
-            "${JOB_TREE_CALLEVAL}" \
+            "${JOB_TREE}" \
             "$(url_to_store "${REAL_CALLS_URL}")" \
             --whole_genome_config \
             "${VG_DOCKER_OPTS[@]}" \
@@ -977,10 +968,10 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
             
         # Report stats to standard out
         echo "---BEGIN RUN STATS---"
-        toil stats "${JOB_TREE_CALLEVAL}"
+        toil stats "${JOB_TREE}"
         echo "---END RUN STATS---"
         # Clean up on success
-        toil clean "${JOB_TREE_CALLEVAL}"
+        toil clean "${JOB_TREE}"
     fi
 
 fi
