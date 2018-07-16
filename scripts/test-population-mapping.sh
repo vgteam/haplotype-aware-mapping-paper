@@ -307,8 +307,8 @@ case "${INPUT_DATA_MODE}" in
             # Use the FASTAs from 
         done
         # I built this by stripping the "chr" off of ftp://ftp.1000genomes.ebi.ac.uk//vol1/ftp/technical/reference/GRCh38_reference_genome/GRCh38_full_analysis_set_plus_decoy_hla.fa
-        # TODO: Won't that cause trouble with the presence/absence of decoys in the graph being confounded with mapper?
-        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/GRCh38.fa.gz")
+        # And then I dropped everything that wasn't 1-22 or X (so no Y, no decoys, no alts)
+        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/GRCh38.chromsExceptY.fa.gz")
         MAPPING_CALLING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         # Evaluate against Platinum Genomes/GIAB hybrid
         EVALUATION_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/platinum-genomes/2017-1.0/hg38/hybrid/nochr/hg38.hybrid.vcf.gz"
@@ -717,6 +717,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         "${VG_DOCKER_OPTS[@]}" \
         --index-bases "${INDEX_BASES[@]}" \
         --gam-names "${GAM_NAMES[@]}" \
+        --downsample "${READ_DOWNSAMPLE_PORTION}" \
         --multipath \
         --use-gbwt \
         --strip-gbwt \
@@ -798,6 +799,7 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
             "${VG_DOCKER_OPTS[@]}" \
             --index-bases "${INDEX_BASES[@]}" \
             --gam-names "${GAM_NAMES[@]}" \
+            --downsample "${READ_DOWNSAMPLE_PORTION}" \
             --multipath \
             --use-gbwt \
             --strip-gbwt \
