@@ -217,6 +217,8 @@ case "${INPUT_DATA_MODE}" in
         READ_DOWNSAMPLE_PORTION="0.5"
         # Simulate in several chunks
         READ_CHUNKS="32"
+        # Mark reads with the feature names from this BED, if set
+        READ_TAG_BED=""
         # Define a region name to process. This sets the name that the graphs and
         # indexes will be saved/looked for under.
         REGION_NAME="CHR21"
@@ -254,6 +256,7 @@ case "${INPUT_DATA_MODE}" in
         READ_COUNT="100000"
         READ_DOWNSAMPLE_PORTION="1.0"
         READ_CHUNKS="2"
+        READ_TAG_BED=""
         REGION_NAME="MHC"
         GRAPH_CONTIGS=("6")
         GRAPH_CONTIG_OFFSETS=("28510119")
@@ -273,6 +276,7 @@ case "${INPUT_DATA_MODE}" in
         READ_COUNT="20000"
         READ_DOWNSAMPLE_PORTION="1.0"
         READ_CHUNKS="2"
+        READ_TAG_BED=""
         REGION_NAME="BRCA1"
         GRAPH_CONTIGS=("17")
         GRAPH_CONTIG_OFFSETS=("43044293")
@@ -295,6 +299,7 @@ case "${INPUT_DATA_MODE}" in
         # Only look at 2% of that (10,000,000 pairs)
         READ_DOWNSAMPLE_PORTION="0.02"
         READ_CHUNKS="32"
+        READ_TAG_BED=""
         REGION_NAME="WG38"
         # We do all the chroms except Y because NA12878 is XX AFAIK
         GRAPH_CONTIGS=("1" "2" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "13" "14" "15" "16" "17" "18" "19" "20" "21" "22" "X")
@@ -323,6 +328,7 @@ case "${INPUT_DATA_MODE}" in
         READ_COUNT="1000"
         READ_DOWNSAMPLE_PORTION="0.90"
         READ_CHUNKS="2"
+        READ_TAG_BED="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref-tags.bed"
         REGION_NAME="test"
         GRAPH_CONTIGS=("ref" "x")
         GRAPH_CONTIG_OFFSETS=("5" "5")
@@ -600,6 +606,12 @@ if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then
         RESTART_OPTS=("--restart")
     fi
     
+    BED_TAG_OPTS=()
+    if [[ ! -z "${READ_TAG_BED}" ]] ; then
+        # We want to tag the reads with overlap against features in this BED.
+        BED_TAG_OPTS=("--tag_bed" "${READ_TAG_BED}")
+    fi
+    
     # This will make a "sim.gam".
     # We provide custom sim options with no substitutions over those specified by the FASTQ.
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg sim \
@@ -610,6 +622,7 @@ if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then
         "$(url_to_store "${READS_URL}")" \
         --whole_genome_config \
         "${VG_DOCKER_OPTS[@]}" \
+        "${BED_TAG_OPTS[@]}" \
         --annotate_xg "${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_haplo.xg" \
         --gam \
         --fastq_out \
