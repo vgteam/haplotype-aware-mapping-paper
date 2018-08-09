@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@95647c3adc61317f0f0e80c2c7edb4e3e364d662#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@5598cea02eb502781884224e9bb60bb04e9647e1#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/adamnovak"
@@ -30,7 +30,7 @@ AWSCLI_PACKAGE="awscli==1.14.70"
 # docker pull quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run
 # docker tag quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run quay.io/adamnovak/vg:wholegenome
 # docker push quay.io/adamnovak/vg:wholegenome
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/adamnovak/vg:dev-v1.8.0-371-g317aaf89-t211-run ")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.9.0-123-gd4adc2fd-t217-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -56,6 +56,8 @@ RUN_ID="run$(cat /dev/urandom | LC_CTYPE=C tr -dc 'a-z0-9' | fold -w 32 | head -
 CLUSTER_NAME="${RUN_ID}"
 # Is our cluster just for this run, or persistent for multiple runs?
 PERSISTENT_CLUSTER=0
+# Set this to 1 to delete the job store on exit
+CLEAN_UP_JOB_TREE=0
 
 # What stage should we restart from, if any?
 RESTART_STAGE=""
@@ -97,7 +99,8 @@ usage() {
     printf "\tALIGNMENTS_URL\tS3 URL where mapped reads and statistics should be cached\n"
     printf "\tCALLS_URL\tS3 URL where variant calls and statistics should be deposited\n"
     printf "Options:\n\n"
-    printf "\t-d\tDo a dry run\n"
+    printf "\t-d\tDo a dry run.\n"
+    printf "\t-S\tClean up job store on exit, even if the run failed.\n"
     printf "\t-p PACKAGE\tUse the given Python package specifier to install toil-vg.\n"
     printf "\t-D REGISTRY\tUse the given Docker registry for finding containers (default: ${TOIL_DOCKER_REGISTRY}).\n"
     printf "\t-t CONTAINER\tUse the given Toil container in the cluster (default: ${TOIL_APPLIANCE_SELF}).\n"
@@ -109,10 +112,13 @@ usage() {
     exit 1
 }
 
-while getopts "hdp:D:t:c:v:R:s:r:" o; do
+while getopts "hdSp:D:t:c:v:R:s:r:" o; do
     case "${o}" in
         d)
             PREFIX="echo"
+            ;;
+        S)
+            CLEAN_UP_JOB_TREE=1
             ;;
         p)
             TOIL_VG_PACKAGE="${OPTARG}"
@@ -218,7 +224,7 @@ case "${INPUT_DATA_MODE}" in
         # Simulate in several chunks
         READ_CHUNKS="32"
         # Mark reads with the feature names from this BED, if set
-        READ_TAG_BED=""
+        READ_TAG_BED="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags.bed"
         # Define a region name to process. This sets the name that the graphs and
         # indexes will be saved/looked for under.
         REGION_NAME="CHR21"
@@ -299,7 +305,7 @@ case "${INPUT_DATA_MODE}" in
         # Only look at 2% of that (10,000,000 pairs)
         READ_DOWNSAMPLE_PORTION="0.02"
         READ_CHUNKS="32"
-        READ_TAG_BED=""
+        READ_TAG_BED="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags.bed"
         REGION_NAME="WG38"
         # We do all the chroms except Y because NA12878 is XX AFAIK
         GRAPH_CONTIGS=("1" "2" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "13" "14" "15" "16" "17" "18" "19" "20" "21" "22" "X")
@@ -375,8 +381,13 @@ function clean_up() {
         echo "Destroy with: toil destroy-cluster '${CLUSTER_NAME}' -z us-west-2a"
     fi
     
-    echo "Clean with:"
-    echo toil clean "${JOB_TREE}"
+    if [[ "${CLEAN_UP_JOB_TREE}" == "1" ]] ; then
+        echo "Cleaning up job tree"
+        toil clean "${JOB_TREE}"
+    else 
+        echo "Clean with:"
+        echo toil clean "${JOB_TREE}"
+    fi
 }
 trap clean_up EXIT
 
