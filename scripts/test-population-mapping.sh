@@ -240,6 +240,7 @@ case "${INPUT_DATA_MODE}" in
         # If multiple files are used they must match up with the contigs.
         # We now use GRCh38 for compatibility with Platinum Genomes
         CONSTRUCT_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/1kg/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr21_GRCh38.genotypes.20170504.vcf.gz")
+        # TODO: This FASTA qhould have the centromeres, but they are hard-masked.
         CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/GRCh38.only21.fa.gz")
         # What FASTA should we use for BWA mapping and Freebayes calling? It needs to have just the selected regions cut out.
         MAPPING_CALLING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
@@ -317,9 +318,11 @@ case "${INPUT_DATA_MODE}" in
             CONSTRUCT_VCF_URLS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/1kg/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr${CONTIG}_GRCh38.genotypes.20170504.vcf.gz")
             # Use the FASTAs from 
         done
-        # I built this by stripping the "chr" off of ftp://ftp.1000genomes.ebi.ac.uk//vol1/ftp/technical/reference/GRCh38_reference_genome/GRCh38_full_analysis_set_plus_decoy_hla.fa
-        # And then I dropped everything that wasn't 1-22 or X (so no Y, no decoys, no alts)
-        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/GRCh38.chromsExceptY.fa.gz")
+        # I built this by dropping the alts from http://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz, mixing in
+        # hs38DH-extra.fa with the decoys that BWA uses, and dropping the "chr" from all the contig names.
+        # It has the centromeres in, but contains lost of soft-masked (lower-case) sequence.
+        # I haven't yet checked whether it has the right ref bases for all the 1kg variants.
+        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/hg38.centromeres.decoys.noAlts.fa.gz")
         MAPPING_CALLING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         # Evaluate against Platinum Genomes/GIAB hybrid
         EVALUATION_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/platinum-genomes/2017-1.0/hg38/hybrid/nochr/hg38.hybrid.vcf.gz"
