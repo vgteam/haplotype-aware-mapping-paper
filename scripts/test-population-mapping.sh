@@ -223,8 +223,8 @@ case "${INPUT_DATA_MODE}" in
         READ_DOWNSAMPLE_PORTION="0.5"
         # Simulate in several chunks
         READ_CHUNKS="32"
-        # Mark reads with the feature names from this BED, if set
-        READ_TAG_BED="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags.bed"
+        # Mark reads with the feature names from these BEDs, if set
+        READ_TAG_BEDS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags.bed")
         # Define a region name to process. This sets the name that the graphs and
         # indexes will be saved/looked for under.
         REGION_NAME="CHR21"
@@ -263,7 +263,7 @@ case "${INPUT_DATA_MODE}" in
         READ_COUNT="100000"
         READ_DOWNSAMPLE_PORTION="1.0"
         READ_CHUNKS="2"
-        READ_TAG_BED=""
+        READ_TAG_BEDS=()
         REGION_NAME="MHC"
         GRAPH_CONTIGS=("6")
         GRAPH_CONTIG_OFFSETS=("28510119")
@@ -283,7 +283,7 @@ case "${INPUT_DATA_MODE}" in
         READ_COUNT="20000"
         READ_DOWNSAMPLE_PORTION="1.0"
         READ_CHUNKS="2"
-        READ_TAG_BED=""
+        READ_TAG_BEDS=()
         REGION_NAME="BRCA1"
         GRAPH_CONTIGS=("17")
         GRAPH_CONTIG_OFFSETS=("43044293")
@@ -306,7 +306,15 @@ case "${INPUT_DATA_MODE}" in
         # Only look at 2% of that (10,000,000 pairs)
         READ_DOWNSAMPLE_PORTION="0.02"
         READ_CHUNKS="32"
-        READ_TAG_BED="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags.bed"
+        # This BED comes from Karen Miga's centromere and telomere BEDs (see ../realData in this repo)
+        # and Trevor Pesout's LINE and SINE BEDs (from s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/LINE.bed and SINE.bed)
+        READ_TAG_BEDS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags.bed")
+        # This BED was made by thresholding http://hgdownload.soe.ucsc.edu/gbdb/hg38/hoffmanMappability/k100.Umap.MultiTrackMappability.bw
+        # at 1.0 using bwtool, and applies a "umapAll100" tag at positions where all overlapping 100-mers map.
+        READ_TAG_BEDS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_umapAll100.bed")
+        # This BED was made directly from http://hgdownload.soe.ucsc.edu/gbdb/hg38/hoffmanMappability/k100.Unique.Mappability.bb 
+        # and applies a "umapAny100" tag at positions where at least one overlapping 100-mer maps.
+        READ_TAG_BEDS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_umapAny100.bed")
         REGION_NAME="WG38"
         # We do all the chroms except Y because NA12878 is XX AFAIK
         GRAPH_CONTIGS=("1" "2" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "13" "14" "15" "16" "17" "18" "19" "20" "21" "22" "X")
@@ -337,7 +345,7 @@ case "${INPUT_DATA_MODE}" in
         READ_COUNT="1000"
         READ_DOWNSAMPLE_PORTION="0.90"
         READ_CHUNKS="2"
-        READ_TAG_BED="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref-tags.bed"
+        READ_TAG_BEDS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref-tags.bed")
         REGION_NAME="test"
         GRAPH_CONTIGS=("ref" "x")
         GRAPH_CONTIG_OFFSETS=("5" "5")
@@ -621,10 +629,9 @@ if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then
     fi
     
     BED_TAG_OPTS=()
-    if [[ ! -z "${READ_TAG_BED}" ]] ; then
-        # We want to tag the reads with overlap against features in this BED.
-        BED_TAG_OPTS=("--tag_bed" "${READ_TAG_BED}")
-    fi
+    for READ_TAG_BED in "${READ_TAG_BEDS[@]}"; do
+        BED_TAG_OPTS+=("--tag_bed" "${READ_TAG_BED}")
+    done
     
     # This will make a "sim.gam".
     # We provide custom sim options with no substitutions over those specified by the FASTQ.
