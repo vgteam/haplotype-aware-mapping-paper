@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@b12a5cfe1e8f8b5bf4d349ddb7852cbdc5c4d79c#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@88b18c22c108f708403b22a949e0764e2d38f248#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/adamnovak"
@@ -326,10 +326,13 @@ case "${INPUT_DATA_MODE}" in
             CONSTRUCT_VCF_URLS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/1kg/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr${CONTIG}_GRCh38.genotypes.20170504.vcf.gz")
             # Use the FASTAs from 
         done
-        # I built this by dropping the alts from http://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz, mixing in
-        # hs38DH-extra.fa with the decoys that BWA uses, and dropping the "chr" from all the contig names.
-        # It has the centromeres in, but contains lost of soft-masked (lower-case) sequence.
-        # I haven't yet checked whether it has the right ref bases for all the 1kg variants.
+        # I built this by dropping the alts from
+        # http://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz,
+        # ordering 1-22, X, Y, M, other, mixing in hs38DH-extra.fa with the
+        # decoys that BWA uses (but dropping the HLAs), and dropping the "chr"
+        # from all the contig names. It has the centromeres in, but contains
+        # lost of soft-masked (lower-case) sequence. I haven't yet checked
+        # whether it has the right ref bases for all the 1kg variants.
         CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/hg38.centromeres.decoys.noAlts.fa.gz")
         MAPPING_CALLING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         # Evaluate against Platinum Genomes/GIAB hybrid
@@ -340,8 +343,8 @@ case "${INPUT_DATA_MODE}" in
         REAL_REALIGN_BAM_URL="ftp://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/NA12878/NIST_NA12878_HG001_HiSeq_300x/RMNISTHS_30xdownsample.bam"
         ;;
     test)
-        # Do a couple test regions of fake chromosomes
-        # Exercise both multi-chromosome and offset capabilities
+        # Do some test regions of fake chromosomes
+        # Exercise both multi-chromosome and offset capabilities, as well as no-VCF contig support
         READ_COUNT="1000"
         READ_DOWNSAMPLE_PORTION="0.90"
         READ_CHUNKS="2"
@@ -353,6 +356,29 @@ case "${INPUT_DATA_MODE}" in
         CONSTRUCT_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref.vcf.gz" "s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/x.vcf.gz")
         CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.fa")
         MAPPING_CALLING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined-minus-5-bases.fa"
+        EVALUATION_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.vcf.gz"
+        EVALUATION_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.fa"
+        EVALUATION_BED_URL=""
+        REAL_FASTQ_URL=""
+        REAL_REALIGN_BAM_URL=""
+        # Override global sample name with one present in these VCFs, for testing
+        SAMPLE_NAME="1"
+        ;;
+    testFastaRegions)
+        # Do some test chromosomes
+        # Exercise --fasta_regions contig name inferrence
+        READ_COUNT="1000"
+        READ_DOWNSAMPLE_PORTION="0.90"
+        READ_CHUNKS="2"
+        READ_TAG_BEDS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref-tags.bed")
+        REGION_NAME="testFastaRegions"
+        GRAPH_CONTIGS=()
+        GRAPH_CONTIG_OFFSETS=()
+        # If empty we pass --fasta_regions to construct
+        GRAPH_REGIONS=()
+        CONSTRUCT_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref.vcf.gz" "s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/x.vcf.gz")
+        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.fa")
+        MAPPING_CALLING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.fa"
         EVALUATION_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.vcf.gz"
         EVALUATION_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.fa"
         EVALUATION_BED_URL=""
@@ -499,6 +525,16 @@ for GRAPH_BASE_URL in "${GRAPH_URLS[@]}" ; do
     fi
 done
 
+# Pass along either all the regions or --fasta_regions to infer them, for construction   
+CONSTRUCT_REGION_OPTS=()
+if [[ "${#GRAPH_REGIONS[@]}" -eq "0" ]] ; then
+    # No regions known.
+    CONSTRUCT_REGION_OPTS+=("--fasta_regions")
+else
+    # Use specified regions
+    CONSTRUCT_REGION_OPTS+=("--regions" "${GRAPH_REGIONS[@]}")
+fi
+
 if [[ "${GRAPHS_READY}" != "1" ]] ; then
     # Graphs need to be generated
     
@@ -525,7 +561,7 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         --neg_control "${SAMPLE_NAME}" \
         --handle_unphased arbitrary \
         "${FILTER_OPTS[@]}" \
-        --regions "${GRAPH_REGIONS[@]}" \
+        "${CONSTRUCT_REGION_OPTS[@]}" \
         --gcsa_index \
         --xg_index \
         --gbwt_index \
@@ -595,7 +631,7 @@ if [[ "${SAMPLE_GRAPHS_READY}" != "1" ]] ; then
         --haplo_sample "${SAMPLE_NAME}" \
         --sample_graph "${SAMPLE_NAME}" \
         --handle_unphased arbitrary \
-        --regions "${GRAPH_REGIONS[@]}" \
+        "${CONSTRUCT_REGION_OPTS[@]}" \
         --gcsa_index \
         --xg_index \
         --gbwt_index \
