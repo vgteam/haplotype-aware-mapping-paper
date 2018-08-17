@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@8c3724bb4226bba261809770ad6befadb4ca7baf#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@b12a5cfe1e8f8b5bf4d349ddb7852cbdc5c4d79c#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/adamnovak"
@@ -30,7 +30,7 @@ AWSCLI_PACKAGE="awscli==1.14.70"
 # docker pull quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run
 # docker tag quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run quay.io/adamnovak/vg:wholegenome
 # docker push quay.io/adamnovak/vg:wholegenome
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.9.0-123-gd4adc2fd-t217-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.9.0-187-g92d82774-t218-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -347,18 +347,18 @@ case "${INPUT_DATA_MODE}" in
         READ_CHUNKS="2"
         READ_TAG_BEDS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref-tags.bed")
         REGION_NAME="test"
-        GRAPH_CONTIGS=("ref" "x")
-        GRAPH_CONTIG_OFFSETS=("5" "5")
-        GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:6-1133" "${GRAPH_CONTIGS[1]}:6-1001")
+        GRAPH_CONTIGS=("ref" "x" "nonvariable")
+        GRAPH_CONTIG_OFFSETS=("5" "5" "0")
+        GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:6-1133" "${GRAPH_CONTIGS[1]}:6-1001" "${GRAPH_CONTIGS[2]}")
         CONSTRUCT_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref.vcf.gz" "s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/x.vcf.gz")
-        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref.fa" "s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/x.fa")
+        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.fa")
         MAPPING_CALLING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined-minus-5-bases.fa"
         EVALUATION_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.vcf.gz"
         EVALUATION_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.fa"
         EVALUATION_BED_URL=""
         REAL_FASTQ_URL=""
         REAL_REALIGN_BAM_URL=""
-        # Override sample name with one present in these VCFs
+        # Override global sample name with one present in these VCFs, for testing
         SAMPLE_NAME="1"
         ;;
     *)
@@ -611,6 +611,8 @@ if [[ "${SAMPLE_GRAPHS_READY}" != "1" ]] ; then
     toil clean "${JOB_TREE}"
         
 fi
+
+exit
 
 # Actually use the sample graph positive control, with evaluation XG override
 INDEX_BASES+=("${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample,${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample_withref")
