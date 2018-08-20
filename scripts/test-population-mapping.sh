@@ -506,9 +506,9 @@ done
 function get_graph_condition_step() {
     local CONDITION="${1}"
     if [[ "${CONDITION}" == "pos-control" || "${CONDITION}" == "haplotypes" ]] ; then
-        echo "construct"
-    else
         echo "evaluation"
+    else
+        echo "construct"
     fi
 }
 
@@ -634,7 +634,8 @@ function add_graph_conditions_options() {
     # So we deduplicate the minaf conditions in the input down to just "snp1kg-minaf"
     local DEDUPLICATED_CONDITIONS=()
     local HAVE_MINAF=0
-    for CONDITION in "${@[@]}" ; do
+    # Note that $@ mass-expands automatically
+    for CONDITION in "$@" ; do
         if [[ "${CONDITION}" == "snp1kg-minaf"* ]] ; then
             if [[ "${HAVE_MINAF}" == "0" ]] ; then
                 DEDUPLICATED_CONDITIONS+=("snp1kg-minaf")
