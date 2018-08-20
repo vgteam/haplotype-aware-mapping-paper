@@ -718,12 +718,19 @@ for CONSTRUCT_STEP in "construct" "evaluation" ; do
     GRAPHS_READY=1
     # And if not which need to be done
     UNREADY_GRAPH_CONDITIONS=()
+    # And whether we will need the VCFs to do them
+    NEED_VCFS=0
     for CONDITION in "${STEP_GRAPH_CONDITIONS[@]}" ; do
         # Check if each condition for the step is done
         if ! is_graph_condition_done "${CONDITION}" ; then
             # If any are not, we need to do the step and also actually do those conditions
             GRAPHS_READY=0
             UNREADY_GRAPH_CONDITIONS+=("${CONDITION}")
+            
+            if [[ "${CONDITION}" != "primary" ]] ; then
+                # If we have to run any condition other than primary, we need the VCFs
+                NEED_VCFS=1
+            fi
         fi
     done
     
@@ -746,13 +753,19 @@ for CONSTRUCT_STEP in "construct" "evaluation" ; do
     # Which options vary from one graph construction step to the other
     STEP_OPTS=()
     if [[ "${CONSTRUCT_STEP}" == "construct" ]] ; then
-        # Pass along the filtering options to filter down the input VCFs
-        STEP_OPTS+=("${FILTER_OPTS[@]}")
-        STEP_OPTS+=("--vcf" "${CONSTRUCT_VCF_URLS[@]}")
+        if [[ "${NEED_VCFS}" == "1" ]] ; then
+            # We need input VCFs
+            STEP_OPTS+=("--vcf" "${CONSTRUCT_VCF_URLS[@]}")
+            # Pass along the filtering options to filter down the input VCFs
+            STEP_OPTS+=("${FILTER_OPTS[@]}")
+        fi
         STEP_OPTS+=("--fasta" "${CONSTRUCT_FASTA_URLS[@]}")
         STEP_OPTS+=("--out_name" "snp1kg-${REGION_NAME}")
     elif [[ "${CONSTRUCT_STEP}" == "evaluation" ]] ; then
-        STEP_OPTS+=("--vcf" "${EVALUATION_VCF_URL}")
+        if [[ "${NEED_VCFS}" == "1" ]] ; then
+            # We need input VCFs
+            STEP_OPTS+=("--vcf" "${EVALUATION_VCF_URL}")
+        fi
         STEP_OPTS+=("--fasta" "${EVALUATION_FASTA_URL}")
         STEP_OPTS+=("--out_name" "platinum-${REGION_NAME}")
     fi
