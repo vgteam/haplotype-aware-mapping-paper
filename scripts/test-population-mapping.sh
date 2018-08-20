@@ -304,12 +304,11 @@ case "${INPUT_DATA_MODE}" in
         REAL_REALIGN_BAM_URL=""
         ;;
     WG38)
-        # 10m pairs would be enough to test mapping, and we could use the real data to test calling
-        # But it would be good to have sim calling results too
-        # So simulate 500m read pairs, which even at 100 bp/read is ~30x coverage
-        READ_COUNT="500000000"
-        # Only look at 2% of that (10,000,000 pairs)
-        READ_DOWNSAMPLE_PORTION="0.02"
+        # 10m pairs is enough to test mapping.
+        # We don't really want to do sim-based calling anymore.
+        READ_COUNT="10000000"
+        # Use all of it
+        READ_DOWNSAMPLE_PORTION="1.0"
         READ_CHUNKS="32"
         # This BED comes from Karen Miga's centromere and telomere BEDs (see ../real-data in this repo)
         # and Trevor Pesout's LINE and SINE BEDs (from s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/LINE.bed and SINE.bed)
