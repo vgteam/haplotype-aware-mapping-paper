@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@94b2f73d1f78baca18132b5781219008313250e9#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@86c7cb6f4ee4fee8813a7ed966dfaf7de1b49642#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/adamnovak"
@@ -30,7 +30,7 @@ AWSCLI_PACKAGE="awscli==1.14.70"
 # docker pull quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run
 # docker tag quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run quay.io/adamnovak/vg:wholegenome
 # docker push quay.io/adamnovak/vg:wholegenome
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.9.0-187-g92d82774-t218-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.9.0-188-g1f7807ea-t219-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -481,65 +481,206 @@ TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
 
 # Now we are set up to do the actual experiment.
 
-# Decide what graphs to run
-# Note that the sample graph positive control is added separately.
-GRAPH_URLS=()
-GAM_NAMES=()
+# We express our experimental conditions through a set of functions, keyed on condition name.
+# We have one space of condition names for graphs being constructed, and later we will have another set for graph and mapper.
 
-# We want the actual graph with its indexes (minus the sample under test)
-GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter")
-GAM_NAMES+=("snp1kg")
+# We use a "haplotypes" condition to make the haplotype xg graphs for simualting from, although we can;'t really map/call against it.
 
+# Define all the graph conditions we can use
+POSSIBLE_GRAPH_CONDITIONS=("snp1kg" "primary" "neg-control" "pos-control" "haplotypes")
 MIN_AF_NUM=0
 for MIN_AF in "${MIN_AFS[@]}" ; do
-    # Add to GRAPH_URLS and GAM_NAMES for all the minaf values
+    # Define all the minaf conditions
     if [[ "${MIN_AF_NUM}" == "0" ]] ; then
-        GAM_NAMES+=("snp1kg-minaf")
+        POSSIBLE_GRAPH_CONDITIONS+=("snp1kg-minaf")
     else
-        GAM_NAMES+=("snp1kg-minaf${MIN_AF_NUM}")      
+        POSSIBLE_GRAPH_CONDITIONS+=("snp1kg-minaf${MIN_AF_NUM}")      
     fi
-    GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}")
     MIN_AF_NUM=$((MIN_AF_NUM+1))
 done
 
-# We want a primary control
-GRAPH_URLS+=("${GRAPHS_URL}/primary")
-GAM_NAMES+=("primary")
+# Define the conditions with functions
 
-# We want a negative control with no right variants
-GRAPH_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minus_${SAMPLE_NAME}")
-GAM_NAMES+=("neg-control")
+# Produce the input VCF set used to generate the condition (and consequently which toil-vg construct run it needs to be part of).
+# The result will be either "construct" (for the VCFs used to construct ordinary graphs) or "evaluation" (for the positive control)
+function get_graph_condition_step() {
+    local CONDITION="${1}"
+    if [[ "${CONDITION}" == "pos-control" || "${CONDITION}" == "haplotypes" ]] ; then
+        echo "construct"
+    else
+        echo "evaluation"
+    fi
+}
 
-# Compose actual index bases by zipping
-INDEX_BASES=()
-GRAPH_NUMBER=0
-while [[ "${GRAPH_NUMBER}" -lt "${#GRAPH_URLS[@]}" ]] ; do
-    # For each graph, get its graph and override URLs
-    GRAPH_URL="${GRAPH_URLS[${GRAPH_NUMBER}]}"
-    INDEX_BASES+=("${GRAPH_URL}")
+# Produce the base URL for aligning against the given graph condition (i.e. .xg without the extension)
+function get_graph_condition_base_url() {
+    local CONDITION="${1}"
     
-    ((GRAPH_NUMBER=${GRAPH_NUMBER}+1))
-done
+    # Work out the base URL for this condition
+    case "${CONDITION}" in
+        snp1kg)
+            local GRAPH_BASE_URL="${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter"
+            ;;
+        snp1kg-minaf*)
+            # Parse out the MIN AF number
+            local MIN_AF_NUM="${CONDITION#"snp1kg-minaf"}"
+            if [[ -z "${MIN_AF_NUM}" ]] ; then
+                MIN_AF_NUM=0
+            fi
+            # Get the actual threshold for that
+            local MIN_AF_THRESHOLD="${MIN_AFS["${MIN_AF_NUM}"]}"
+            local GRAPH_BASE_URL=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF_THRESHOLD}")
+            ;;
+        primary)
+            local GRAPH_BASE_URL="${GRAPHS_URL}/primary"
+            ;;
+        neg-control)
+            local GRAPH_BASE_URL="${GRAPHS_URL}/snp1kg-${REGION_NAME}_minus_${SAMPLE_NAME}"
+            ;;
+        pos-control)
+            # This one gets generated from the evaluation VCF
+            local GRAPH_BASE_URL="${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample"
+            ;;
+        haplotypes)
+            # This one is generated from the evaluation VCF and also kind of fake
+            local GRAPH_BASE_URL="${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_haplo"
+            ;;
+        *)
+            echo 1>&2 "Error: unimplemented condition ${CONDITION}"
+            # TODO: we can't necessarily kill the whole shell here, just make the function call fail
+            exit 1
+    esac
+    
+    echo "${GRAPH_BASE_URL}"
+    
+}
 
-# Check if all the expected output graphs exist and only run if not.
-GRAPHS_READY=1
-for GRAPH_BASE_URL in "${GRAPH_URLS[@]}" ; do
-    # For each graph we want to run
-    for SUFFIX in ".xg" ".gcsa" ".gcsa.lcp" ; do
-        # For each file absolutely required for the graph
+# Produce the base URL with optional comma-separated override evaluation index URL, used for toil-vg mapeval
+function get_graph_index_base_with_override() {
+    local CONDITION="${1}"
+    
+    # Look up the real base URL
+    local GRAPH_BASE_URL="$(get_graph_condition_base_url "${CONDITION}")"
+    
+    if [[ "${CONDITION}" == "pos-control" ]] ; then
+        # We have an override
+        echo "${GRAPH_BASE_URL},${GRAPH_BASE_URL}_withref"
+    else
+        # No override, pass it along
+        echo "${GRAPH_BASE_URL}"
+    fi
+}
+
+# Return success if the output files for the given condition are ready in S3, and false if not and the condition has to be rerun
+function is_graph_condition_done() {
+    local CONDITION="${1}"
+    
+    # Work out the base URL for this condition
+    local GRAPH_BASE_URL="$(get_graph_condition_base_url "${CONDITION}")"
+    
+    local GRAPHS_READY=1
+    
+    if [[ "${CONDITION}" == "haplotypes" ]] ; then
+        # For the haplotypes we need to check the main xg and also the individual haplotype xgs
+        for SIM_INDEX_URL in "${GRAPH_BASE_URL}_thread_0.xg" "${GRAPH_BASE_URL}_thread_1.xg" "${GRAPH_BASE_URL}.xg" ; do
+            if ! aws s3 ls >/dev/null "${SIM_INDEX_URL}" ; then
+                echo "Need to generate haplotype file ${SIM_INDEX_URL}"
+                GRAPHS_READY=0
+                break
+            fi
+        done
+    else
+        local SUFFIXES=(".xg" ".gcsa" ".gcsa.lcp")
         
-        if ! aws s3 ls >/dev/null "${GRAPH_BASE_URL}${SUFFIX}" ; then
-            # The graphs are not ready yet because this file is missing
-            echo "Need to generate graph file ${GRAPH_BASE_URL}${SUFFIX}"
-            GRAPHS_READY=0
-            break
+        if [["${CONDITION}" == "snp1kg"* || "${CONDITION}" == "neg-control" ]] ; then
+            # These all have GBWT and snarl indexes
+            SUFFIXES+=(".gbwt" ".snarls") 
         fi
-    done
+        
+        if [[ "${CONDITION}" == "primary" ]] ; then
+            # Primary has an (empty) snarl index
+            SUFFIXES+=(".snarls")
+        fi  
+        
+        if [[ "${CONDITION}" == "pos-control" ]] ; then
+            # The positive control has an associated withref xg that it uses for an override
+            SUFFIXES+=("_withref.xg")
+        fi
+        
+        # Normal graphs get these indexes instead
+        for SUFFIX in "${SUFFIXES[@]}" ; do
+            # For each file we want
+            if ! aws s3 ls >/dev/null "${GRAPH_BASE_URL}${SUFFIX}" ; then
+                # The graphs are not ready yet because this file is missing
+                echo "Need to generate graph file ${GRAPH_BASE_URL}${SUFFIX}"
+                GRAPHS_READY=0
+                break
+            fi
+        done
+    fi
     
     if [[ "${GRAPHS_READY}" == "0" ]] ; then
-        break
+        # Return false
+        return 1
     fi
-done
+    # Return true
+    return 0
+}
+    
+# Add construct options for the given conditions to the global CONDITION_OPTS array.
+# You must pass all the conditions at once, because some conditions are generated with the same arguments.
+function add_graph_conditions_options() {
+    # We only have to deal with the same options for multiple conditions for minaf
+    # So we deduplicate the minaf conditions in the input down to just "snp1kg-minaf"
+    local DEDUPLICATED_CONDITIONS=()
+    local HAVE_MINAF=0
+    for CONDITION in "${@[@]}" ; do
+        if [[ "${CONDITION}" == "snp1kg-minaf"* ]] ; then
+            if [[ "${HAVE_MINAF}" == "0" ]] ; then
+                DEDUPLICATED_CONDITIONS+=("snp1kg-minaf")
+                local HAVE_MINAF=1
+            fi
+        else
+            DEDUPLICATED_CONDITIONS+=("${CONDITION}")
+        fi
+    done
+
+    for CONDITION in "${DEDUPLICATED_CONDITIONS[@]}" ; do
+        # Now go through all the deduplicated condition names and produce their options
+        case "${CONDITION}" in
+            snp1kg)
+                CONDITION_OPTS+=("--pangenome")
+                ;;
+            snp1kg-minaf)
+                CONDITION_OPTS+=("--min_af" "${MIN_AFS[@]}")
+                ;;
+            primary)
+                CONDITION_OPTS+=("--primary")
+                ;;
+            neg-control)
+                CONDITION_OPTS+=("--neg_control" "${SAMPLE_NAME}")
+                ;;
+            pos-control)
+                # This one gets generated from the evaluation VCF
+                CONDITION_OPTS+=("--sample_graph" "${SAMPLE_NAME}")
+                ;;
+            haplotypes)
+                # This one gets generated from the evaluation VCF and is also kind of fake
+                CONDITION_OPTS+=("--haplo_sample" "${SAMPLE_NAME}")
+                ;;
+            *)
+                echo 1>&2 "Error: unimplemented condition ${CONDITION}"
+                # TODO: we can't necessarily kill the whole shell here, just make the function call fail
+                exit 1
+        esac
+    done
+}
+
+
+
+# Define, of those, which we will run. This could be all of them, or just one or a few.
+# The haplotypes condition always needs to be run if we want any simulated reads.
+RUN_GRAPH_CONDITIONS=("primary" "haplotypes")
 
 # Pass along either all the regions or --fasta_regions to infer them, for construction   
 CONSTRUCT_REGION_OPTS=()
@@ -551,13 +692,61 @@ else
     CONSTRUCT_REGION_OPTS+=("--regions" "${GRAPH_REGIONS[@]}")
 fi
 
-if [[ "${GRAPHS_READY}" != "1" ]] ; then
-    # Graphs need to be generated
+for CONSTRUCT_STEP in "construct" "evaluation" ; do
+    # For each of the two toil-vg construct runs we want to do
     
+    # Work out what graphs we need
+    STEP_GRAPH_CONDITIONS=()
+    
+    for CONDITION in "${RUN_GRAPH_CONDITIONS[@]}" ; do
+        # For each condition that might be involved
+        if [[ "$(get_graph_condition_step "${CONDITION}")" == "${CONSTRUCT_STEP}" ]] ; then
+            # Do this condition in this step
+            STEP_GRAPH_CONDITIONS+=("${CONDITION}")
+        fi
+    done
+    
+    # Work out if the graphs are ready
+    GRAPHS_READY=1
+    # And if not which need to be done
+    UNREADY_GRAPH_CONDITIONS=()
+    for CONDITION in "${STEP_GRAPH_CONDITIONS[@]}" ; do
+        # Check if each condition for the step is done
+        if ! is_graph_condition_done "${CONDITION}" ; then
+            # If any are not, we need to do the step and also actually do those conditions
+            GRAPHS_READY=0
+            UNREADY_GRAPH_CONDITIONS+=("${CONDITION}")
+        fi
+    done
+    
+    if [[ "${GRAPHS_READY}" == "1" ]] ; then
+        # Graphs are all ready. Try the next construct step, if any.
+        continue
+    fi
+    
+    # Collect together the options we need to make the unmade graphs
+    CONDITION_OPTS=()
+    add_graph_conditions_options "${UNREADY_GRAPH_CONDITIONS[@]}"
+    
+    # Determine if we are restarting
     RESTART_OPTS=()
-    if [[ "${RESTART_STAGE}" == "construct" ]] ; then
+    if [[ ( "${RESTART_STAGE}" == "construct" && "${CONSTRUCT_STEP}" == "construct" ) || "${RESTART_STAGE}" == "construct-sim" && "${CONSTRUCT_STEP}" == "evaluation" ]] ; then
         # Restart from this stage
         RESTART_OPTS=("--restart")
+    fi
+    
+    # Which options vary from one graph construction step to the other
+    STEP_OPTS=()
+    if [[ "${CONSTRUCT_STEP}" == "construct" ]] ; then
+        # Pass along the filtering options to filter down the input VCFs
+        STEP_OPTS+=("${FILTER_OPTS[@]}")
+        STEP_OPTS+=("--vcf" "${CONSTRUCT_VCF_URLS[@]}")
+        STEP_OPTS+=("--fasta" "${CONSTRUCT_FASTA_URLS[@]}")
+        STEP_OPTS+=("--out_name" "snp1kg-${REGION_NAME}")
+    elif [[ "${CONSTRUCT_STEP}" == "evaluation" ]] ; then
+        STEP_OPTS+=("--vcf" "${EVALUATION_VCF_URL}")
+        STEP_OPTS+=("--fasta" "${EVALUATION_FASTA_URL}")
+        STEP_OPTS+=("--out_name" "platinum-${REGION_NAME}")
     fi
     
     # Construct the graphs
@@ -566,17 +755,10 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
         "$(url_to_store "${GRAPHS_URL}")" \
         --whole_genome_config \
         "${VG_DOCKER_OPTS[@]}" \
-        --vcf "${CONSTRUCT_VCF_URLS[@]}" \
-        --fasta "${CONSTRUCT_FASTA_URLS[@]}" \
-        --out_name "snp1kg-${REGION_NAME}" \
         --alt_paths \
-        --pangenome \
-        --min_af "${MIN_AFS[@]}" \
-        --primary \
-        --pos_control "${SAMPLE_NAME}" \
-        --neg_control "${SAMPLE_NAME}" \
+        "${CONDITION_OPTS[@]}" \
         --handle_unphased arbitrary \
-        "${FILTER_OPTS[@]}" \
+        "${STEP_OPTS[@]}" \
         "${CONSTRUCT_REGION_OPTS[@]}" \
         --gcsa_index \
         --xg_index \
@@ -591,84 +773,8 @@ if [[ "${GRAPHS_READY}" != "1" ]] ; then
     echo "---END RUN STATS---"
     # Clean up on success
     toil clean "${JOB_TREE}"
-        
-fi
-
-
-
-# Now we run the sample graph positive control, and make the single-haplotype XGs we will use for read simulation.
-SAMPLE_GRAPHS_READY=1
-# For each graph we want to run
-for SUFFIX in ".xg" ".gcsa" ".gcsa.lcp" ; do
-    # For each file absolutely required for the graph
     
-    if ! aws s3 ls >/dev/null "${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample${SUFFIX}" ; then
-        # The sample graph is not ready yet because this file is missing
-        echo "Need to generate sample graph file ${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample${SUFFIX}"
-        SAMPLE_GRAPHS_READY=0
-        break
-    fi
 done
-
-if ! aws s3 ls >/dev/null "${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample_withref.xg" ; then
-    # The sample graph withref xg is missing
-    echo "Need to generate sample graph file ${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample_withref.xg"
-    SAMPLE_GRAPHS_READY=0
-fi
-
-for SIM_INDEX_URL in "${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_0.xg" "${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_haplo_thread_1.xg" "${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_haplo.xg" ; do
-    # We also need these indexes for sim
-    if ! aws s3 ls >/dev/null "${SIM_INDEX_URL}" ; then
-        echo "Need to generate sample graph file ${SIM_INDEX_URL}"
-        SAMPLE_GRAPHS_READY=0
-        break
-    fi
-done
-
-if [[ "${SAMPLE_GRAPHS_READY}" != "1" ]] ; then
-    # Graphs need to be generated
-    
-    RESTART_OPTS=()
-    if [[ "${RESTART_STAGE}" == "construct-sample" ]] ; then
-        # Restart from this stage
-        RESTART_OPTS=("--restart")
-    fi
-    
-    # Construct the graphs
-    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg construct \
-        "${JOB_TREE}" \
-        "$(url_to_store "${GRAPHS_URL}")" \
-        --whole_genome_config \
-        "${VG_DOCKER_OPTS[@]}" \
-        --vcf "${EVALUATION_VCF_URL}" \
-        --fasta "${EVALUATION_FASTA_URL}" \
-        --out_name "platinum-${REGION_NAME}" \
-        --alt_paths \
-        --haplo_sample "${SAMPLE_NAME}" \
-        --sample_graph "${SAMPLE_NAME}" \
-        --handle_unphased arbitrary \
-        "${CONSTRUCT_REGION_OPTS[@]}" \
-        --gcsa_index \
-        --xg_index \
-        --gbwt_index \
-        --snarls_index \
-        "${RESTART_OPTS[@]}" \
-        "${TOIL_CLUSTER_OPTS[@]}"
-        
-    # Report stats to standard out
-    echo "---BEGIN RUN STATS---"
-    toil stats "${JOB_TREE}"
-    echo "---END RUN STATS---"
-    # Clean up on success
-    toil clean "${JOB_TREE}"
-        
-fi
-
-exit
-
-# Actually use the sample graph positive control, with evaluation XG override
-INDEX_BASES+=("${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample,${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample_withref")
-GAM_NAMES+=("pos-control")
 
 # Now work out where in there these simulated reads belong
 READS_URL="${GRAPHS_URL}/sim-${SAMPLE_NAME}-${READ_SEED}-${READ_COUNT}-${READ_CHUNKS}"
@@ -723,24 +829,45 @@ if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then
     
 fi
 
+exit
+
+# Decide what graphs to do mapeval on
+# Note that the sample graph positive control is added separately.
+
+# These are the names of the graph conditions, which will be used as GAM names in mapeval
+GAM_NAMES=()
+# These are the graph base URLs with optional comma-separated evaluation override URLs
+INDEX_BASES=()
+
+for CONDITION in "${RUN_GRAPH_CONDITIONS[@]}" ; do
+    if [[ "${CONDITION}" == "haplotypes" ]] ; then
+        # Skip this condition for mapping; it is only for haplotype graph generation
+        continue
+    fi
+
+    # For each condition we will run, spit out its GAM name and index_bases entry
+    GAM_NAMES+=("${CONDITION}")
+    INDEX_BASES+=("$(get_graph_index_base_with_override "${CONDITION}")")
+done
+
 # Work out what alignment condition GAM names we hope to generate, with tags
-CONDITION_NAMES=()
+MAP_CONDITIONS=()
 # And what XGs go with them
 XG_URLS=()
 
-# TODO: This is sort of duplicative with GRAPH_URLS and GAM_NAMES above.
+# TODO: This is sort of duplicative with INDEX_BASES and GAM_NAMES above.
 # But it is more specific/restrictive for just calling (i.e. we ignore single-ended).
 
-CONDITION_NAMES+=("primary-mp-pe")
+MAP_CONDITIONS+=("primary-mp-pe")
 XG_URLS+=("${GRAPHS_URL}/primary.xg")
 
-CONDITION_NAMES+=("snp1kg-pe")
+MAP_CONDITIONS+=("snp1kg-pe")
 XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter.xg")
 
-CONDITION_NAMES+=("snp1kg-mp-pe")
+MAP_CONDITIONS+=("snp1kg-mp-pe")
 XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter.xg")
 
-CONDITION_NAMES+=("snp1kg-gbwt-mp-pe")
+MAP_CONDITIONS+=("snp1kg-gbwt-mp-pe")
 XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter.xg")
 
 MIN_AF_NUM=0
@@ -748,11 +875,11 @@ for MIN_AF in "${MIN_AFS[@]}" ; do
     # Make condition names for all the minaf values
     # Make sure to handle normal and gbwt versions
     if [[ "${MIN_AF_NUM}" == "0" ]] ; then
-        CONDITION_NAMES+=("snp1kg-minaf-mp-pe")
-        CONDITION_NAMES+=("snp1kg-minaf-gbwt-mp-pe")
+        MAP_CONDITIONS+=("snp1kg-minaf-mp-pe")
+        MAP_CONDITIONS+=("snp1kg-minaf-gbwt-mp-pe")
     else
-        CONDITION_NAMES+=("snp1kg-minaf${MIN_AF_NUM}-mp-pe")
-        CONDITION_NAMES+=("snp1kg-minaf${MIN_AF_NUM}-gbwt-mp-pe")
+        MAP_CONDITIONS+=("snp1kg-minaf${MIN_AF_NUM}-mp-pe")
+        MAP_CONDITIONS+=("snp1kg-minaf${MIN_AF_NUM}-gbwt-mp-pe")
     fi
     XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}.xg")
     XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}.xg")
@@ -760,16 +887,16 @@ for MIN_AF in "${MIN_AFS[@]}" ; do
 done
 
 # For the positive control, use the sample + reference xg for calling.
-CONDITION_NAMES+=("pos-control-mp-pe")
+MAP_CONDITIONS+=("pos-control-mp-pe")
 XG_URLS+=("${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample_withref.xg")
 
-CONDITION_NAMES+=("neg-control-mp-pe")
+MAP_CONDITIONS+=("neg-control-mp-pe")
 XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minus_${SAMPLE_NAME}.xg")
 
 
 # This will hold the final GAM URLs for simulated reads
 SIM_GAM_URLS=()
-for CONDITION_NAME in "${CONDITION_NAMES[@]}" ; do
+for CONDITION_NAME in "${MAP_CONDITIONS[@]}" ; do
     # We generate them from the condition names
     SIM_GAM_URLS+=("${SIM_ALIGNMENTS_URL}/aligned-${CONDITION_NAME}_default.gam") 
 done
@@ -778,7 +905,7 @@ done
 SIM_BAM_URLS=("${SIM_ALIGNMENTS_URL}/bwa-mem-pe.bam")
 BAM_NAMES=("bwa-pe")
 # And surjected BAMs
-for CONDITION_NAME in "${CONDITION_NAMES[@]}" ; do
+for CONDITION_NAME in "${MAP_CONDITIONS[@]}" ; do
     # We generate them from the condition names
     SIM_BAM_URLS+=("${SIM_ALIGNMENTS_URL}/aligned-${CONDITION_NAME}-surject.bam")
     BAM_NAMES+=("${CONDITION_NAME}-surject")
@@ -845,14 +972,14 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
 
     # This will hold the final GAM URLs for real reads
     REAL_GAM_URLS=()
-    for CONDITION_NAME in "${CONDITION_NAMES[@]}" ; do
+    for CONDITION_NAME in "${MAP_CONDITIONS[@]}" ; do
         # We generate them from the condition names
         REAL_GAM_URLS+=("${REAL_ALIGNMENTS_URL}/aligned-${CONDITION_NAME}_default.gam") 
     done
 
     # And the BAM URLs
     REAL_BAM_URLS=("${REAL_ALIGNMENTS_URL}/bwa-mem-pe.bam")
-    for CONDITION_NAME in "${CONDITION_NAMES[@]}" ; do
+    for CONDITION_NAME in "${MAP_CONDITIONS[@]}" ; do
         # We generate them from the condition names
         REAL_BAM_URLS+=("${REAL_ALIGNMENTS_URL}/aligned-${CONDITION_NAME}-surject.bam")
     done
@@ -975,7 +1102,7 @@ fi
 # It would be nice if we could run genotype, but it is extremely slow (~2.5 hours per chunk on chr21 sim data)
 # If we ran call we would add
 #--gams "${SIM_GAM_URLS[@]}" \
-#--gam_names "${CONDITION_NAMES[@]}" \
+#--gam_names "${MAP_CONDITIONS[@]}" \
 # --xg_paths "${XG_URLS[@]}" \
 #--call \
 
@@ -1033,7 +1160,7 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
 
     # If we ran call we would add:
     #--gams "${REAL_GAM_URLS[@]}" \
-    #--gam_names "${CONDITION_NAMES[@]}" \
+    #--gam_names "${MAP_CONDITIONS[@]}" \
     # --xg_paths "${XG_URLS[@]}" \
     #--call \
 
