@@ -871,53 +871,39 @@ for CONDITION in "${RUN_GRAPH_CONDITIONS[@]}" ; do
     INDEX_BASES+=("$(get_graph_index_base_with_override "${CONDITION}")")
 done
 
-# Work out what alignment condition GAM names we hope to generate, with tags
-MAP_CONDITIONS=()
-# And what XGs go with them
+################################################################################
+
+# Now do the mapping. We have a system of map conditions, just like the graph conditions.
+# Each map condition is a graph condition, then with -gbwt, -mp, and/or -pe tags.
+# Map conditions are also defined using functions.
+
+
+# Produce the graph condition name from a map condition name.
+# The graph condition can be used to get the base URL, from which the xg URL can be derived.
+function get_map_condition_graph_condition() {
+    local CONDITION="${1}"
+    # Drop all the suffixes, in order
+    local CONDITION="${CONDITION%-pe}"
+    local CONDITION="${CONDITION%-mp}"
+    local CONDITION="${CONDITION%-gbwt}"
+    echo "${CONDITION}"
+}
+
+# Work out what map conditions to run
+# Doesn't include BWA which is always run.
+RUN_MAP_CONDITIONS=("primary-mp-pe")
+
+
+# Work out the XG URLs that are used for each map condition
 XG_URLS=()
-
-# TODO: This is sort of duplicative with INDEX_BASES and GAM_NAMES above.
-# But it is more specific/restrictive for just calling (i.e. we ignore single-ended).
-
-MAP_CONDITIONS+=("primary-mp-pe")
-XG_URLS+=("${GRAPHS_URL}/primary.xg")
-
-MAP_CONDITIONS+=("snp1kg-pe")
-XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter.xg")
-
-MAP_CONDITIONS+=("snp1kg-mp-pe")
-XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter.xg")
-
-MAP_CONDITIONS+=("snp1kg-gbwt-mp-pe")
-XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_filter.xg")
-
-MIN_AF_NUM=0
-for MIN_AF in "${MIN_AFS[@]}" ; do
-    # Make condition names for all the minaf values
-    # Make sure to handle normal and gbwt versions
-    if [[ "${MIN_AF_NUM}" == "0" ]] ; then
-        MAP_CONDITIONS+=("snp1kg-minaf-mp-pe")
-        MAP_CONDITIONS+=("snp1kg-minaf-gbwt-mp-pe")
-    else
-        MAP_CONDITIONS+=("snp1kg-minaf${MIN_AF_NUM}-mp-pe")
-        MAP_CONDITIONS+=("snp1kg-minaf${MIN_AF_NUM}-gbwt-mp-pe")
-    fi
-    XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}.xg")
-    XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minaf_${MIN_AF}.xg")
-    MIN_AF_NUM=$((MIN_AF_NUM+1))
+for CONDITION in "${RUN_MAP_CONDITIONS[@]}" ; do
+    GRAPH_CONDITION="$(get_map_condition_graph_condition "${CONDITION}")"
+    XG_URLS+=("$(get_graph_condition_base_url "${GRAPH_CONDITION}").xg")
 done
-
-# For the positive control, use the sample + reference xg for calling.
-MAP_CONDITIONS+=("pos-control-mp-pe")
-XG_URLS+=("${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_sample_withref.xg")
-
-MAP_CONDITIONS+=("neg-control-mp-pe")
-XG_URLS+=("${GRAPHS_URL}/snp1kg-${REGION_NAME}_minus_${SAMPLE_NAME}.xg")
-
 
 # This will hold the final GAM URLs for simulated reads
 SIM_GAM_URLS=()
-for CONDITION_NAME in "${MAP_CONDITIONS[@]}" ; do
+for CONDITION_NAME in "${RUN_MAP_CONDITIONS[@]}" ; do
     # We generate them from the condition names
     SIM_GAM_URLS+=("${SIM_ALIGNMENTS_URL}/aligned-${CONDITION_NAME}_default.gam") 
 done
@@ -926,7 +912,7 @@ done
 SIM_BAM_URLS=("${SIM_ALIGNMENTS_URL}/bwa-mem-pe.bam")
 BAM_NAMES=("bwa-pe")
 # And surjected BAMs
-for CONDITION_NAME in "${MAP_CONDITIONS[@]}" ; do
+for CONDITION_NAME in "${RUN_MAP_CONDITIONS[@]}" ; do
     # We generate them from the condition names
     SIM_BAM_URLS+=("${SIM_ALIGNMENTS_URL}/aligned-${CONDITION_NAME}-surject.bam")
     BAM_NAMES+=("${CONDITION_NAME}-surject")
@@ -969,11 +955,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         --fastq "${READS_URL}/sim.fq.gz" \
         --truth "${READS_URL}/true.pos" \
         --plot-sets \
-        "primary-mp-pe,snp1kg-mp-pe,snp1kg-gbwt-mp-pe,snp1kg-minaf-mp-pe,snp1kg-minaf-gbwt-mp-pe,pos-control-mp-pe,neg-control-mp-pe" \
-        "primary-mp,snp1kg-mp,snp1kg-gbwt-mp,snp1kg-minaf-mp,snp1kg-minaf-gbwt-mp,pos-control-mp,neg-control-mp" \
-        "bwa-mem-pe,snp1kg-gbwt-mp-pe,snp1kg-pe" \
-        "bwa-mem,snp1kg-gbwt-mp,snp1kg" \
-        "snp1kg-minaf-mp-pe,snp1kg-minaf1-mp-pe,snp1kg-minaf2-mp-pe,snp1kg-minaf3-mp-pe" \
+        "primary-mp-pe,bwa-mem-pe" \
         "${RESTART_OPTS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
         
@@ -993,14 +975,14 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
 
     # This will hold the final GAM URLs for real reads
     REAL_GAM_URLS=()
-    for CONDITION_NAME in "${MAP_CONDITIONS[@]}" ; do
+    for CONDITION_NAME in "${RUN_MAP_CONDITIONS[@]}" ; do
         # We generate them from the condition names
         REAL_GAM_URLS+=("${REAL_ALIGNMENTS_URL}/aligned-${CONDITION_NAME}_default.gam") 
     done
 
     # And the BAM URLs
     REAL_BAM_URLS=("${REAL_ALIGNMENTS_URL}/bwa-mem-pe.bam")
-    for CONDITION_NAME in "${MAP_CONDITIONS[@]}" ; do
+    for CONDITION_NAME in "${RUN_MAP_CONDITIONS[@]}" ; do
         # We generate them from the condition names
         REAL_BAM_URLS+=("${REAL_ALIGNMENTS_URL}/aligned-${CONDITION_NAME}-surject.bam")
     done
@@ -1063,6 +1045,10 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
     fi
 fi
 
+################################################################################
+
+# Now do the calling.
+
 if [[ -z "${EVALUATION_VCF_URL}" ]] ; then
     # Don't calleval without the truth VCF
     echo "No truth VCF; skipping calleval."
@@ -1123,15 +1109,13 @@ fi
 # It would be nice if we could run genotype, but it is extremely slow (~2.5 hours per chunk on chr21 sim data)
 # If we ran call we would add
 #--gams "${SIM_GAM_URLS[@]}" \
-#--gam_names "${MAP_CONDITIONS[@]}" \
+#--gam_names "${RUN_MAP_CONDITIONS[@]}" \
 # --xg_paths "${XG_URLS[@]}" \
 #--call \
 
 # What plot sets do we use for calling?
 # Each will get a normal (clipped) and an unclipped version.
-CALL_PLOT_SETS=("primary-mp-pe-surject-fb,snp1kg-mp-pe-surject-fb,snp1kg-gbwt-mp-pe-surject-fb,snp1kg-minaf-mp-pe-surject-fb,snp1kg-minaf-gbwt-mp-pe-surject-fb,pos-control-mp-pe-surject-fb,neg-control-mp-pe-surject-fb" \
-    "bwa-pe-fb,snp1kg-gbwt-mp-pe-surject-fb,snp1kg-pe-surject-fb,primary-mp-pe-surject-fb" \
-    "snp1kg-minaf-mp-pe-surject-fb,snp1kg-minaf1-mp-pe-surject-fb,snp1kg-minaf2-mp-pe-surject-fb,snp1kg-minaf3-mp-pe-surject-fb")
+CALL_PLOT_SETS=("primary-mp-pe-surject-fb,bwa-pe-fb")
 
 if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
 
@@ -1181,7 +1165,7 @@ if [ ! -z "${REAL_FASTQ_URL}" ] ; then
 
     # If we ran call we would add:
     #--gams "${REAL_GAM_URLS[@]}" \
-    #--gam_names "${MAP_CONDITIONS[@]}" \
+    #--gam_names "${RUN_MAP_CONDITIONS[@]}" \
     # --xg_paths "${XG_URLS[@]}" \
     #--call \
 
