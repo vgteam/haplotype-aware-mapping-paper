@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@82840c1a6a2e6e443c4c43abe8ba7560cdaf94c3#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@45c710e7df38d9705b2272423b03ff22e7755759#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/adamnovak"
@@ -40,7 +40,7 @@ VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.9.0-188-g1f7807ea-t219-r
 # If using r4 we also need to make sure --nodeStorage, which sets EBS volume size for EBS nodes, is sufficient.
 # We can also use r3.8xlarge which are cheaper (~0.50) and come with faster disks anyway.
 # But you need a Toil which can tell them apart
-NODE_TYPES="i3.8xlarge,r3.8xlarge:0.50"
+NODE_TYPES="i3.8xlarge,r3.8xlarge:0.60"
 # How many nodes should we use at most per type?
 # Also comma-separated.
 MAX_NODES="10,50"
@@ -419,7 +419,7 @@ esac
 # We only need one job tree because only one Toil run runs at a time.
 JOB_TREE="aws:us-west-2:${RUN_ID}"
 
-echo "Running run ${RUN_ID} as ${KEYPAIR_NAME} on ${GRAPH_REGIONS[@]} for ${READ_COUNT} reads into ${ALIGNMENTS_URL}"
+echo "Running run ${RUN_ID} as ${KEYPAIR_NAME} on ${GRAPH_REGIONS[@]} for ${READ_COUNT} read pairs into ${ALIGNMENTS_URL}"
 
 # Decide on sim and real alignment URLS
 SIM_ALIGNMENTS_URL="${ALIGNMENTS_URL}/sim"
@@ -599,7 +599,7 @@ function is_graph_condition_done() {
     else
         local SUFFIXES=(".xg" ".gcsa" ".gcsa.lcp")
         
-        if [["${CONDITION}" == "snp1kg"* || "${CONDITION}" == "neg-control" ]] ; then
+        if [[ "${CONDITION}" == "snp1kg"* || "${CONDITION}" == "neg-control" ]] ; then
             # These all have GBWT and snarl indexes
             SUFFIXES+=(".gbwt" ".snarls") 
         fi
@@ -745,7 +745,7 @@ for CONSTRUCT_STEP in "construct" "evaluation" ; do
     
     # Determine if we are restarting
     RESTART_OPTS=()
-    if [[ ( "${RESTART_STAGE}" == "construct" && "${CONSTRUCT_STEP}" == "construct" ) || "${RESTART_STAGE}" == "construct-sim" && "${CONSTRUCT_STEP}" == "evaluation" ]] ; then
+    if [[ ( "${RESTART_STAGE}" == "construct" && "${CONSTRUCT_STEP}" == "construct" ) || "${RESTART_STAGE}" == "construct-sample" && "${CONSTRUCT_STEP}" == "evaluation" ]] ; then
         # Restart from this stage
         RESTART_OPTS=("--restart")
     fi
@@ -850,8 +850,6 @@ if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then
     
 fi
 
-exit
-
 # Decide what graphs to do mapeval on
 # Note that the sample graph positive control is added separately.
 
@@ -955,7 +953,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         --fastq "${READS_URL}/sim.fq.gz" \
         --truth "${READS_URL}/true.pos" \
         --plot-sets \
-        "primary-mp-pe,bwa-mem-pe" \
+        "Primary vs. BWA:primary-mp-pe,bwa-mem-pe" \
         "${RESTART_OPTS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
         
