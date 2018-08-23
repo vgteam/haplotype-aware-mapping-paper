@@ -800,7 +800,16 @@ done
 # Now work out where in there these simulated reads belong
 READS_URL="${GRAPHS_URL}/sim-${SAMPLE_NAME}-${READ_SEED}-${READ_COUNT}-${READ_CHUNKS}"
 
-if ! aws s3 ls >/dev/null "${READS_URL}/true.pos" ; then 
+# Work out if all the reads files are done
+READS_READY=1
+for READS_FILE_URL in "${READS_URL}/true.pos" "${READS_URL}/sim.fq.gz" ; do
+    if ! aws s3 ls >/dev/null "${READS_FILE_URL}" ; then 
+        READS_READY=0
+        break
+    fi
+done
+
+if [[ "${READS_READY}" != "1" ]] ; then
     # Now we need to simulate reads from the two haplotypes
     
     RESTART_OPTS=()
@@ -953,7 +962,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         --fastq "${READS_URL}/sim.fq.gz" \
         --truth "${READS_URL}/true.pos" \
         --plot-sets \
-        "Primary vs. BWA:primary-mp-pe,bwa-mem-pe" \
+        "primary-mp-pe,bwa-mem-pe" \
         "${RESTART_OPTS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
         
