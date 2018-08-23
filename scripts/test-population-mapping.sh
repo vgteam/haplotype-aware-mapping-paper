@@ -4,7 +4,7 @@
 set -ex
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@45c710e7df38d9705b2272423b03ff22e7755759#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@ee515845c8ec920ef24f0415df06ebc3354cca0b#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/adamnovak"
@@ -107,7 +107,7 @@ usage() {
     printf "\t-c CLUSTER\tUse the given persistent Toil cluster, which will be created if not present.\n"
     printf "\t-v DOCKER\tUse the given Docker image specifier for vg.\n"
     printf "\t-R RUN_ID\tUse or restart the given run ID.\n"
-    printf "\t-s STAGE\tRestart the given stage (construct, construct-sample, sim, map-sim, map-real, call-sim, call-real).\n"
+    printf "\t-s STAGE\tRestart the given stage (construct, construct-sample, sim, bwa-index, map-sim, map-real, call-sim, call-real).\n"
     printf "\t-r REGION\tRun on the given named region (21, MHC, BRCA1).\n"
     exit 1
 }
@@ -491,10 +491,11 @@ TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
 # We express our experimental conditions through a set of functions, keyed on condition name.
 # We have one space of condition names for graphs being constructed, and later we will have another set for graph and mapper.
 
-# We use a "haplotypes" condition to make the haplotype xg graphs for simualting from, although we can;'t really map/call against it.
+# We use a "haplotypes" condition to make the haplotype xg graphs for simualting from, although we can't really map/call against it.
+# We also use a "bwa" condition to represent the BWA indexes, although it's not really a graph.
 
 # Define all the graph conditions we can use
-POSSIBLE_GRAPH_CONDITIONS=("snp1kg" "primary" "neg-control" "pos-control" "haplotypes")
+POSSIBLE_GRAPH_CONDITIONS=("snp1kg" "primary" "neg-control" "pos-control" "haplotypes" "bwa")
 MIN_AF_NUM=0
 for MIN_AF in "${MIN_AFS[@]}" ; do
     # Define all the minaf conditions
@@ -509,7 +510,7 @@ done
 # Define the conditions with functions
 
 # Produce the input VCF set used to generate the condition (and consequently which toil-vg construct run it needs to be part of).
-# The result will be either "construct" (for the VCFs used to construct ordinary graphs) or "evaluation" (for the positive control)
+# The result will be "construct" (for the VCFs used to construct ordinary graphs), or "evaluation" (for the positive control)
 function get_graph_condition_step() {
     local CONDITION="${1}"
     if [[ "${CONDITION}" == "pos-control" || "${CONDITION}" == "haplotypes" ]] ; then
@@ -520,6 +521,7 @@ function get_graph_condition_step() {
 }
 
 # Produce the base URL for aligning against the given graph condition (i.e. .xg without the extension)
+# Also works for BWA, in which case it produces the .fa URL without the index extension(s)
 function get_graph_condition_base_url() {
     local CONDITION="${1}"
     
@@ -552,6 +554,10 @@ function get_graph_condition_base_url() {
             # This one is generated from the evaluation VCF and also kind of fake
             local GRAPH_BASE_URL="${GRAPHS_URL}/platinum-${REGION_NAME}_${SAMPLE_NAME}_haplo"
             ;;
+        bwa)
+            # This one isn't a real graph, it's wherever we should be putting our FASTA indexes
+            local GRAPH_BASE_URL="${GRAPHS_URL}/bwa.fa"
+            ;;
         *)
             echo 1>&2 "Error: unimplemented condition ${CONDITION}"
             # TODO: we can't necessarily kill the whole shell here, just make the function call fail
@@ -563,8 +569,14 @@ function get_graph_condition_base_url() {
 }
 
 # Produce the base URL with optional comma-separated override evaluation index URL, used for toil-vg mapeval
+# Doesn't work for BWA
 function get_graph_index_base_with_override() {
     local CONDITION="${1}"
+    
+    if [[ "${CONDITION}" == "bwa" ]] ; then
+        echo "Error: The bwa condition can't be fed into mapeval with a graph index base option." 1>&2
+        exit 1
+    fi
     
     # Look up the real base URL
     local GRAPH_BASE_URL="$(get_graph_condition_base_url "${CONDITION}")"
@@ -578,7 +590,8 @@ function get_graph_index_base_with_override() {
     fi
 }
 
-# Return success if the output files for the given condition are ready in S3, and false if not and the condition has to be rerun
+# Return success if the output files for the given condition are ready in S3, and false if not and the condition has to be rerun.
+# Works for the bwa condition too, in which case it checks for all the BWA indexes.
 function is_graph_condition_done() {
     local CONDITION="${1}"
     
@@ -597,7 +610,14 @@ function is_graph_condition_done() {
             fi
         done
     else
-        local SUFFIXES=(".xg" ".gcsa" ".gcsa.lcp")
+        if [[ "${CONDITION}" == "bwa" ]] ; then
+            # FASTA files get these indexes
+            local SUFFIXES=(".amb" ".ann" ".bwt" ".pac" ".sa") 
+        else
+            # Normal graphs get these indexes
+            local SUFFIXES=(".xg" ".gcsa" ".gcsa.lcp")
+        fi
+        
         
         if [[ "${CONDITION}" == "snp1kg"* || "${CONDITION}" == "neg-control" ]] ; then
             # These all have GBWT and snarl indexes
@@ -614,12 +634,11 @@ function is_graph_condition_done() {
             SUFFIXES+=("_withref.xg")
         fi
         
-        # Normal graphs get these indexes instead
         for SUFFIX in "${SUFFIXES[@]}" ; do
             # For each file we want
             if ! aws s3 ls >/dev/null "${GRAPH_BASE_URL}${SUFFIX}" ; then
                 # The graphs are not ready yet because this file is missing
-                echo "Need to generate graph file ${GRAPH_BASE_URL}${SUFFIX}"
+                echo "Need to generate index file ${GRAPH_BASE_URL}${SUFFIX}"
                 GRAPHS_READY=0
                 break
             fi
@@ -676,6 +695,10 @@ function add_graph_conditions_options() {
                 # This one gets generated from the evaluation VCF and is also kind of fake
                 CONDITION_OPTS+=("--haplo_sample" "${SAMPLE_NAME}")
                 ;;
+            bwa)
+                # This one gets generated from a separate FASTA file
+                CONDITION_OPTS+=("--bwa_reference" "${MAPPING_CALLING_FASTA_URL}")
+                ;;
             *)
                 echo 1>&2 "Error: unimplemented condition ${CONDITION}"
                 # TODO: we can't necessarily kill the whole shell here, just make the function call fail
@@ -688,7 +711,8 @@ function add_graph_conditions_options() {
 
 # Define, of those, which we will run. This could be all of them, or just one or a few.
 # The haplotypes condition always needs to be run if we want any simulated reads.
-RUN_GRAPH_CONDITIONS=("primary" "haplotypes")
+# And BWA always needs to be run to compare agaisnt bwa
+RUN_GRAPH_CONDITIONS=("primary" "haplotypes" "bwa")
 
 # Pass along either all the regions or --fasta_regions to infer them, for construction   
 CONSTRUCT_REGION_OPTS=()
@@ -701,7 +725,7 @@ else
 fi
 
 for CONSTRUCT_STEP in "construct" "evaluation" ; do
-    # For each of the two toil-vg construct runs we want to do
+    # For each of the runs we want to do
     
     # Work out what graphs we need
     STEP_GRAPH_CONDITIONS=()
@@ -727,8 +751,8 @@ for CONSTRUCT_STEP in "construct" "evaluation" ; do
             GRAPHS_READY=0
             UNREADY_GRAPH_CONDITIONS+=("${CONDITION}")
             
-            if [[ "${CONDITION}" != "primary" ]] ; then
-                # If we have to run any condition other than primary, we need the VCFs
+            if [[ "${CONDITION}" != "primary" && "${CONDITION}" != "bwa" ]] ; then
+                # If we have to run any condition other than primary or bwa, we need the VCFs
                 NEED_VCFS=1
             fi
         fi
@@ -745,7 +769,8 @@ for CONSTRUCT_STEP in "construct" "evaluation" ; do
     
     # Determine if we are restarting
     RESTART_OPTS=()
-    if [[ ( "${RESTART_STAGE}" == "construct" && "${CONSTRUCT_STEP}" == "construct" ) || "${RESTART_STAGE}" == "construct-sample" && "${CONSTRUCT_STEP}" == "evaluation" ]] ; then
+    if [[ ( "${RESTART_STAGE}" == "construct" && "${CONSTRUCT_STEP}" == "construct" ) || \
+          ( "${RESTART_STAGE}" == "construct-sample" && "${CONSTRUCT_STEP}" == "evaluation" ) ]] ; then
         # Restart from this stage
         RESTART_OPTS=("--restart")
     fi
@@ -872,6 +897,11 @@ for CONDITION in "${RUN_GRAPH_CONDITIONS[@]}" ; do
         # Skip this condition for mapping; it is only for haplotype graph generation
         continue
     fi
+    
+    if [[ "${CONDITION}" == "bwa" ]] ; then
+        # Skip this condition because it gets its own option instead.
+        continue
+    fi
 
     # For each condition we will run, spit out its GAM name and index_bases entry
     GAM_NAMES+=("${CONDITION}")
@@ -958,7 +988,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         --strip-gbwt \
         --use-snarls \
         --surject \
-        --bwa --fasta "${MAPPING_CALLING_FASTA_URL}" \
+        --bwa --fasta "$(get_graph_condition_base_url bwa)" \
         --fastq "${READS_URL}/sim.fq.gz" \
         --truth "${READS_URL}/true.pos" \
         --plot-sets \
