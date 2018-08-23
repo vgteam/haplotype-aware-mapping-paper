@@ -7,11 +7,11 @@ set -ex
 TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@ee515845c8ec920ef24f0415df06ebc3354cca0b#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
-TOIL_DOCKER_REGISTRY="quay.io/adamnovak"
+TOIL_DOCKER_REGISTRY="quay.io/ucsc_cgl"
 # What Toil appliance should we use? Ought to match the locally installed Toil,
 # but can't quite if the locally installed Toil is locally modified or
 # installed from a non-release Git commit.
-TOIL_APPLIANCE_SELF="${TOIL_DOCKER_REGISTRY}/toil:3.17.0a1-79c241c0eb273a3af6952202e38bd8d0c4bfe05c"
+TOIL_APPLIANCE_SELF="${TOIL_DOCKER_REGISTRY}/toil:3.18.0a1.dev2629-14af7326ed3531d8fa2a38fe152256e8a208ed52"
 
 
 # What version of awscli do we use? This has to be compatible with the
