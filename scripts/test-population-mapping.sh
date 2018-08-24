@@ -992,7 +992,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         --fastq "${READS_URL}/sim.fq.gz" \
         --truth "${READS_URL}/true.pos" \
         --plot-sets \
-        "primary-mp-pe,bwa-mem-pe" \
+        "Primary vs. BWA:primary-mp-pe,bwa-mem-pe" \
         "${RESTART_OPTS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
         
