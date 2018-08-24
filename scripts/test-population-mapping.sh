@@ -2,9 +2,11 @@
 # test-population-mapping.sh: evaluate the performance impact of population-aware mapping using toil-vg mapeval on AWS
 
 set -ex
+# We need extglob support for this script
+shopt -s extglob
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@ee515845c8ec920ef24f0415df06ebc3354cca0b#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@af8832d8ba9f131d4cdb84572b0e4ad03500b9e8#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/ucsc_cgl"
@@ -30,7 +32,7 @@ AWSCLI_PACKAGE="awscli==1.14.70"
 # docker pull quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run
 # docker tag quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run quay.io/adamnovak/vg:wholegenome
 # docker push quay.io/adamnovak/vg:wholegenome
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.9.0-188-g1f7807ea-t219-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.9.0-206-gd7e8a63e-t223-run")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -79,6 +81,10 @@ FILTER_OPTS=("--filter_ceph" "--filter_samples" "${SAMPLE_NAME}")
 # What min allele frequency limits do we use?
 # These come out as minaf, minaf1, minaf2, minaf3 (number = # of zeroes)
 MIN_AFS=("0.0335570469" "0.1" "0.01" "0.001")
+
+# What GBWT penalties do we use?
+# These come out as numbers in the condition tags.
+GBWT_RECOMBINATION_PENALTIES=(5.0 10.0 19.0 20.7 22.0 40.0)
 
 # Put this in front of commands to do or not do them, depending on if we are doing a dry run or not
 PREFIX=""
@@ -712,7 +718,7 @@ function add_graph_conditions_options() {
 # Define, of those, which we will run. This could be all of them, or just one or a few.
 # The haplotypes condition always needs to be run if we want any simulated reads.
 # And BWA always needs to be run to compare agaisnt bwa
-RUN_GRAPH_CONDITIONS=("primary" "haplotypes" "bwa")
+RUN_GRAPH_CONDITIONS=("primary" "haplotypes" "snp1kg" "snp1kg-minaf" "bwa")
 
 # Pass along either all the regions or --fasta_regions to infer them, for construction   
 CONSTRUCT_REGION_OPTS=()
@@ -911,7 +917,7 @@ done
 ################################################################################
 
 # Now do the mapping. We have a system of map conditions, just like the graph conditions.
-# Each map condition is a graph condition, then with -gbwt, -mp, and/or -pe tags.
+# Each map condition is a graph condition, then with -gbwt, -gbwt<number>, -mp, and/or -pe tags.
 # Map conditions are also defined using functions.
 
 
@@ -922,13 +928,33 @@ function get_map_condition_graph_condition() {
     # Drop all the suffixes, in order
     local CONDITION="${CONDITION%-pe}"
     local CONDITION="${CONDITION%-mp}"
-    local CONDITION="${CONDITION%-gbwt}"
+    # Greedily lop off the biggest gbwt specifier we can get with extglob syntax
+    # See <http://wiki.bash-hackers.org/syntax/pattern>
+    local CONDITION="${CONDITION%%-gbwt*([0-9.])}"
     echo "${CONDITION}"
+}
+
+# Produce the GBWT recombination penalty from a map condition name, or "" if not present
+function get_map_condition_gbwt_penalty() {
+    local CONDITION="${1}"
+    # Grab the number with grep, printing just the match and catching -gbwt with a lookbehind
+    # See https://serverfault.com/a/660878/49409
+    # Make sure to allow grep to fail
+    echo "${CONDITION}" | grep -oP -- '(?<=-gbwt)([0-9.]*)' || true
 }
 
 # Work out what map conditions to run
 # Doesn't include BWA which is always run.
-RUN_MAP_CONDITIONS=("primary-mp-pe")
+RUN_MAP_CONDITIONS=("primary-mp-pe" "snp1kg-minaf-mp-pe" "snp1kg-mp-pe")
+
+for PENALTY in "${GBWT_RECOMBINATION_PENALTIES[@]}" ; do
+    # Add all the GBWT conditions with the specified penalties
+    RUN_MAP_CONDITIONS+=("snp1kg-gbwt${PENALTY}-mp-pe")
+done
+if [[ "${#GBWT_RECOMBINATION_PENALTIES[@]}" -eq "0" ]] ; then
+    # If there are no penalties specified, just add the default-penalty gbwt in
+    RUN_MAP_CONDITIONS+=("snp1kg-gbwt-mp-pe")
+fi
 
 
 # Work out the XG URLs that are used for each map condition
@@ -948,19 +974,19 @@ done
 # Also BWA
 SIM_BAM_URLS=("${SIM_ALIGNMENTS_URL}/bwa-mem-pe.bam")
 BAM_NAMES=("bwa-pe")
-# And surjected BAMs
-for CONDITION_NAME in "${RUN_MAP_CONDITIONS[@]}" ; do
-    # We generate them from the condition names
-    SIM_BAM_URLS+=("${SIM_ALIGNMENTS_URL}/aligned-${CONDITION_NAME}-surject.bam")
-    BAM_NAMES+=("${CONDITION_NAME}-surject")
-done
+# Don't surject BAMs form simulated reads
+
+# This holds the map conditions we will actually run because they aren't done yet
+# TODO: Work out which map conditions are not done and do just them.
+UNREADY_MAP_CONDITIONS=()
+SIM_ALIGNMENTS_READY=1
 
 # Check if all the expected output alignments exist and only run if not.
-SIM_ALIGNMENTS_READY=1
 for ALIGNMENT_URL in "${SIM_GAM_URLS[@]}" "${SIM_BAM_URLS[@]}" "${SIM_ALIGNMENTS_URL}/position.results.tsv" "${SIM_ALIGNMENTS_URL}/plots/plot-roc.svg"; do
     if ! aws s3 ls >/dev/null "${ALIGNMENT_URL}" ; then
         # The alignments are not ready yet because this file is missing
         echo "Need to generate alignment file ${ALIGNMENT_URL}"
+        UNREADY_MAP_CONDITIONS=("${RUN_MAP_CONDITIONS[@]}")
         SIM_ALIGNMENTS_READY=0
         break
     fi
@@ -974,6 +1000,19 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         RESTART_OPTS=("--restart")
     fi
     
+    GBWT_PENALTY_OPTS=()
+    for CONDITION in "${UNREADY_MAP_CONDITIONS[@]}" ; do
+        PENALTY="$(get_map_condition_gbwt_penalty "${CONDITION}")"
+        if [[ ! -z "${PENALTY}" ]] ; then
+            # This condition we are running uses a GBWT penalty
+            GBWT_PENALTY_OPTS+=("${PENALTY}")
+        fi
+    done
+    if [[ "${#GBWT_PENALTY_OPTS[@]}" -ne 0 ]] ; then
+        # There are penalties to send, so prefix them
+        GBWT_PENALTY_OPTS=("--gbwt-penalties" "${GBWT_PENALTY_OPTS[@]}")
+    fi
+    
     # Run one big mapeval run that considers all conditions we are interested in
     $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg mapeval \
         "${JOB_TREE}" \
@@ -985,14 +1024,17 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         --downsample "${READ_DOWNSAMPLE_PORTION}" \
         --multipath \
         --use-gbwt \
+        "${GBWT_PENALTY_OPTS[@]}" \
         --strip-gbwt \
         --use-snarls \
-        --surject \
         --bwa --fasta "$(get_graph_condition_base_url bwa)" \
         --fastq "${READS_URL}/sim.fq.gz" \
         --truth "${READS_URL}/true.pos" \
         --plot-sets \
         "Primary vs. BWA:primary-mp-pe,bwa-mem-pe" \
+        "GBWT vs. Not:snp1kg-mp-pe,snp1kg-gbwt-mp-pe,snp1kg-minaf-mp-pe" \
+        "GBWT Penalty:snp1kg-gbwt5.0-mp-pe,snp1kg-gbwt10.0-mp-pe,snp1kg-gbwt20.7-mp-pe,snp1kg-gbwt40.0-mp-pe" \
+        "GBWT Penalty Fine:snp1kg-gbwt19.0-mp-pe,snp1kg-gbwt20.7-mp-pe,snp1kg-gbwt22.0-mp-pe" \
         "${RESTART_OPTS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
         
@@ -1020,16 +1062,22 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
     # And the BAM URLs
     REAL_BAM_URLS=("${REAL_ALIGNMENTS_URL}/bwa-mem-pe.bam")
     for CONDITION_NAME in "${RUN_MAP_CONDITIONS[@]}" ; do
-        # We generate them from the condition names
+        # We do surject the real reads.
+        # We generate BAM names from the condition names
         REAL_BAM_URLS+=("${REAL_ALIGNMENTS_URL}/aligned-${CONDITION_NAME}-surject.bam")
     done
 
     # Make sure they exist
+    # TODO: If they don't exist, work out specifically which conditions to run.
+    # For now we just do all of them.
+    # TODO: combine with sim read code
+    UNREADY_MAP_CONDITIONS=()
     REAL_ALIGNMENTS_READY=1
     for ALIGNMENT_URL in "${REAL_GAM_URLS[@]}" "${REAL_BAM_URLS[@]}" "${REAL_ALIGNMENTS_URL}/position.results.tsv" "${REAL_ALIGNMENTS_URL}/plots/plot-roc.svg" ; do
         if ! aws s3 ls >/dev/null "${ALIGNMENT_URL}" ; then
             # The alignments are not ready yet because this file is missing
             echo "Need to generate alignment file ${ALIGNMENT_URL}"
+            UNREADY_MAP_CONDITIONS=("${RUN_MAP_CONDITIONS[@]}")
             REAL_ALIGNMENTS_READY=0
             break
         fi
@@ -1051,6 +1099,19 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
             # Restart from this stage
             RESTART_OPTS=("--restart")
         fi
+        
+        GBWT_PENALTY_OPTS=()
+        for CONDITION in "${UNREADY_MAP_CONDITIONS[@]}" ; do
+            PENALTY="$(get_map_condition_gbwt_penalty "${CONDITION}")"
+            if [[ ! -z "${PENALTY}" ]] ; then
+                # This condition we are running uses a GBWT penalty
+                GBWT_PENALTY_OPTS+=("${PENALTY}")
+            fi
+        done
+        if [[ "${#GBWT_PENALTY_OPTS[@]}" -ne 0 ]] ; then
+            # There are penalties to send, so prefix them
+            GBWT_PENALTY_OPTS=("--gbwt-penalties" "${GBWT_PENALTY_OPTS[@]}")
+        fi
     
         # Run a mapeval run just to map the real reads, under all conditions
         $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg mapeval \
@@ -1063,6 +1124,7 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
             --downsample "${READ_DOWNSAMPLE_PORTION}" \
             --multipath \
             --use-gbwt \
+            "${GBWT_PENALTY_OPTS[@]}" \
             --strip-gbwt \
             --use-snarls \
             --surject \
@@ -1135,59 +1197,11 @@ else
     BED_OPTS+=(--vcfeval_bed_regions "${EVALUATION_BED_URL}")
 fi
 
-# Now the sim calls
-SIM_CALLS_READY=1
-if ! aws s3 ls >/dev/null "${SIM_CALLS_URL}/plots/roc-weighted.svg" ; then
-    # Use just this one file as a marker of calleval done-ness.
-    # TODO: use other files/VCFs.
-    SIM_CALLS_READY=0
-fi
-
-# It would be nice if we could run genotype, but it is extremely slow (~2.5 hours per chunk on chr21 sim data)
-# If we ran call we would add
-#--gams "${SIM_GAM_URLS[@]}" \
-#--gam_names "${RUN_MAP_CONDITIONS[@]}" \
-# --xg_paths "${XG_URLS[@]}" \
-#--call \
+# Don't do calls based on simulated data
 
 # What plot sets do we use for calling?
 # Each will get a normal (clipped) and an unclipped version.
 CALL_PLOT_SETS=("primary-mp-pe-surject-fb,bwa-pe-fb")
-
-if [[ "${SIM_CALLS_READY}" != "1" ]] ; then
-
-    RESTART_OPTS=()
-    if [[ "${RESTART_STAGE}" == "call-sim" ]] ; then
-        # Restart from this stage
-        RESTART_OPTS=("--restart")
-    fi
-
-    $PREFIX toil ssh-cluster --insecure --zone=us-west-2a "${CLUSTER_NAME}" "${TOIL_ENV[@]}" venv/bin/toil-vg calleval \
-        "${JOB_TREE}" \
-        "$(url_to_store "${SIM_CALLS_URL}")" \
-        --whole_genome_config \
-        "${VG_DOCKER_OPTS[@]}" \
-        --bams "${SIM_BAM_URLS[@]}" \
-        --bam_names "${BAM_NAMES[@]}" \
-        --chroms "${GRAPH_CONTIGS[@]}" \
-        --vcf_offsets "${GRAPH_CONTIG_OFFSETS[@]}" \
-        --vcfeval_fasta "${EVALUATION_FASTA_URL}" \
-        --vcfeval_baseline "${EVALUATION_VCF_URL}" \
-        --caller_fasta "${MAPPING_CALLING_FASTA_URL}" \
-        --freebayes \
-        "${BED_OPTS[@]}" \
-        --sample_name "${SAMPLE_NAME}" \
-        --plot_sets "${CALL_PLOT_SETS[@]}" \
-        "${RESTART_OPTS[@]}" \
-        "${TOIL_CLUSTER_OPTS[@]}"
-        
-    # Report stats to standard out
-    echo "---BEGIN RUN STATS---"
-    toil stats "${JOB_TREE}"
-    echo "---END RUN STATS---"
-    # Clean up on success
-    toil clean "${JOB_TREE}"
-fi
 
 if [ ! -z "${REAL_FASTQ_URL}" ] ; then
     # Now the real calls if applicable
