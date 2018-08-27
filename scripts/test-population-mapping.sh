@@ -23,7 +23,8 @@ TOIL_APPLIANCE_SELF="${TOIL_DOCKER_REGISTRY}/toil:3.18.0a1.dev2629-14af7326ed353
 # we just ask for "awscli". So we work out the right version manually and live
 # in hope that <https://github.com/pypa/pip/issues/988> will eventually stop
 # plaguing our lab.
-AWSCLI_PACKAGE="awscli==1.14.70"
+# awscli 1.15.85 should pull in botocore 1.10.84 
+AWSCLI_PACKAGE="awscli==1.15.85"
 
 # What vg should we use?
 # Update this tag to change the Docker that will be used by a restart.
@@ -812,6 +813,7 @@ for CONSTRUCT_STEP in "construct" "evaluation" ; do
         --handle_unphased arbitrary \
         "${STEP_OPTS[@]}" \
         "${CONSTRUCT_REGION_OPTS[@]}" \
+        --merge_graphs \
         --gcsa_index \
         --xg_index \
         --gbwt_index \
