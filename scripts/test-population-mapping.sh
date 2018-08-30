@@ -6,7 +6,7 @@ set -ex
 shopt -s extglob
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@4cdb8e72cd21cb95233f9713fb870178ed41a7d7#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@13fd01c03f520c622f729205452ba21ac4b49c07#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/ucsc_cgl"
@@ -33,7 +33,7 @@ AWSCLI_PACKAGE="awscli==1.15.85"
 # docker pull quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run
 # docker tag quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run quay.io/adamnovak/vg:wholegenome
 # docker push quay.io/adamnovak/vg:wholegenome
-VG_DOCKER_OPTS=("--vg_docker" "quay.io/vgteam/vg:dev-v1.9.0-206-gd7e8a63e-t223-run")
+VG_DOCKER_OPTS=("--vg_docker" "quay.io/adamnovak/vg:wholegenome")
 
 # What node types should we use?
 # Comma-separated, with :bid-in-dollars after the name for spot nodes
@@ -339,6 +339,13 @@ case "${INPUT_DATA_MODE}" in
         # This pseudoautosomal region BED was manually produced from the PAR table at https://www.ncbi.nlm.nih.gov/grc/human
         # by subtracting 1 from the start posittion and leaving the end position unchanged.
         READ_TAG_BEDS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_PAR.bed")
+        # This blacklisted region BED was derived from ENCODE's blacklist BED, converted to our naming scheme.
+        # Users should apparently cite:
+        # ENCODE Project Consortium. An integrated encyclopedia of DNA elements in the human genome.
+        # Nature. 2012 Sep 6;489(7414):57-74. doi: 10.1038/nature11247.
+        # Original BED: http://mitra.stanford.edu/kundaje/akundaje/release/blacklists/hg38-human/hg38.blacklist.bed.gz
+        # See: https://sites.google.com/site/anshulkundaje/projects/blacklists
+        READ_TAG_BEDS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_blacklist.bed")
         # Drop reads on Y (because NA12878 is XX AFAIK) and also on all the _decoy sequences (because they aren't "real" parts of the reference)
         # TODO: Have a better, graph-internal way to delineate decoys.
         READ_DECOY_REGEXES=("^Y$" "_decoy$")
@@ -1034,7 +1041,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         --truth "${READS_URL}/true.pos" \
         --plot-sets \
         "Primary vs. BWA:primary-mp-pe,bwa-mem-pe" \
-        "GBWT vs. Not:snp1kg-mp-pe,snp1kg-gbwt-mp-pe,snp1kg-minaf-mp-pe" \
+        "GBWT vs. Not:snp1kg-mp-pe,snp1kg-gbwt5.0-mp-pe,snp1kg-minaf-mp-pe" \
         "GBWT Penalty:snp1kg-gbwt5.0-mp-pe,snp1kg-gbwt10.0-mp-pe,snp1kg-gbwt20.7-mp-pe,snp1kg-gbwt40.0-mp-pe" \
         "GBWT Penalty Fine:snp1kg-gbwt19.0-mp-pe,snp1kg-gbwt20.7-mp-pe,snp1kg-gbwt22.0-mp-pe" \
         "${RESTART_OPTS[@]}" \
