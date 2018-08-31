@@ -366,9 +366,10 @@ case "${INPUT_DATA_MODE}" in
         # ordering 1-22, X, Y, M, other, mixing in hs38DH-extra.fa with the
         # decoys that BWA uses (but dropping the HLAs), and dropping the "chr"
         # from all the contig names. It has the centromeres in, but contains
-        # lost of soft-masked (lower-case) sequence. I haven't yet checked
-        # whether it has the right ref bases for all the 1kg variants.
-        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/hg38.centromeres.decoys.noAlts.fa.gz")
+        # lost of soft-masked (lower-case) sequence. It has the Y PARs from
+        # s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_PAR.bed 
+        # hard-masked out
+        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/hg38.centromeres.decoys.noAlts.maskYPAR.fa.gz")
         MAPPING_CALLING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         # Evaluate against Platinum Genomes/GIAB hybrid
         EVALUATION_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/platinum-genomes/2017-1.0/hg38/hybrid/nochr/hg38.hybrid.vcf.gz"
