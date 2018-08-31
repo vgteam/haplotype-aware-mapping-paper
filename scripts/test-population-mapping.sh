@@ -6,7 +6,7 @@ set -ex
 shopt -s extglob
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@13fd01c03f520c622f729205452ba21ac4b49c07#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@ec13c37dbab3aede58ef4e47f1e885c13f7959aa#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/ucsc_cgl"
@@ -85,7 +85,7 @@ MIN_AFS=("0.0335570469" "0.1" "0.01" "0.001")
 
 # What GBWT penalties do we use?
 # These come out as numbers in the condition tags.
-GBWT_RECOMBINATION_PENALTIES=(5.0 10.0 19.0 20.7 22.0 40.0)
+GBWT_RECOMBINATION_PENALTIES=(5.0)
 
 # Put this in front of commands to do or not do them, depending on if we are doing a dry run or not
 PREFIX=""
@@ -726,7 +726,7 @@ function add_graph_conditions_options() {
 # Define, of those, which we will run. This could be all of them, or just one or a few.
 # The haplotypes condition always needs to be run if we want any simulated reads.
 # And BWA always needs to be run to compare agaisnt bwa
-RUN_GRAPH_CONDITIONS=("primary" "haplotypes" "snp1kg" "snp1kg-minaf" "bwa")
+RUN_GRAPH_CONDITIONS=("primary" "haplotypes" "snp1kg" "snp1kg-minaf" "bwa" "pos-control" "neg-control")
 
 # Pass along either all the regions or --fasta_regions to infer them, for construction   
 CONSTRUCT_REGION_OPTS=()
@@ -954,7 +954,7 @@ function get_map_condition_gbwt_penalty() {
 
 # Work out what map conditions to run
 # Doesn't include BWA which is always run.
-RUN_MAP_CONDITIONS=("primary-mp-pe" "snp1kg-minaf-mp-pe" "snp1kg-mp-pe")
+RUN_MAP_CONDITIONS=("primary-mp-pe" "snp1kg-minaf-mp-pe" "snp1kg-mp-pe" "pos-control-mp-pe" "neg-control-mp-pe")
 
 for PENALTY in "${GBWT_RECOMBINATION_PENALTIES[@]}" ; do
     # Add all the GBWT conditions with the specified penalties
@@ -1040,10 +1040,9 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         --fastq "${READS_URL}/sim.fq.gz" \
         --truth "${READS_URL}/true.pos" \
         --plot-sets \
-        "Primary vs. BWA:primary-mp-pe,bwa-mem-pe" \
+        "Overall Best Mapper:primary-mp-pe,bwa-mem-pe,snp1kg-gbwt5.0-mp-pe,pos-control-mp-pe" \
         "GBWT vs. Not:snp1kg-mp-pe,snp1kg-gbwt5.0-mp-pe,snp1kg-minaf-mp-pe" \
-        "GBWT Penalty:snp1kg-gbwt5.0-mp-pe,snp1kg-gbwt10.0-mp-pe,snp1kg-gbwt20.7-mp-pe,snp1kg-gbwt40.0-mp-pe" \
-        "GBWT Penalty Fine:snp1kg-gbwt19.0-mp-pe,snp1kg-gbwt20.7-mp-pe,snp1kg-gbwt22.0-mp-pe" \
+        "GBWT vs. Controls:neg-control-mp-pe,snp1kg-gbwt5.0-mp-pe,bwa-mp-pe,pos-control-mp-pe" \
         "${RESTART_OPTS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
         
@@ -1059,7 +1058,28 @@ fi
 exit
 
 if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
-    # We can also do alignments of real data
+    # We can also do alignments of real data, with different conditions
+    
+    # Work out what map conditions to run
+    # Doesn't include BWA which is always run.
+    RUN_MAP_CONDITIONS=("primary-mp-pe")
+
+    for PENALTY in "${GBWT_RECOMBINATION_PENALTIES[@]}" ; do
+        # Add all the GBWT conditions with the specified penalties
+        RUN_MAP_CONDITIONS+=("snp1kg-gbwt${PENALTY}-mp-pe")
+    done
+    if [[ "${#GBWT_RECOMBINATION_PENALTIES[@]}" -eq "0" ]] ; then
+        # If there are no penalties specified, just add the default-penalty gbwt in
+        RUN_MAP_CONDITIONS+=("snp1kg-gbwt-mp-pe")
+    fi
+
+    # Work out the XG URLs that are used for each map condition
+    XG_URLS=()
+    for CONDITION in "${RUN_MAP_CONDITIONS[@]}" ; do
+        GRAPH_CONDITION="$(get_map_condition_graph_condition "${CONDITION}")"
+        XG_URLS+=("$(get_graph_condition_base_url "${GRAPH_CONDITION}").xg")
+    done
+
 
     # This will hold the final GAM URLs for real reads
     REAL_GAM_URLS=()
@@ -1152,6 +1172,9 @@ if [[ ! -z "${REAL_FASTQ_URL}" || ! -z "${REAL_REALIGN_BAM_URL}" ]] ; then
         toil clean "${JOB_TREE}"
     fi
 fi
+
+# Exit after real read mapping and skip calling.
+exit
 
 ################################################################################
 
