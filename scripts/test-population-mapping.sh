@@ -6,7 +6,7 @@ set -ex
 shopt -s extglob
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@ec13c37dbab3aede58ef4e47f1e885c13f7959aa#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@fef6814c13ac9c0ac8ba47762e6bc9e043aa13c8#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/ucsc_cgl"
@@ -727,7 +727,7 @@ function add_graph_conditions_options() {
 # Define, of those, which we will run. This could be all of them, or just one or a few.
 # The haplotypes condition always needs to be run if we want any simulated reads.
 # And BWA always needs to be run to compare agaisnt bwa
-RUN_GRAPH_CONDITIONS=("primary" "haplotypes" "snp1kg" "snp1kg-minaf" "bwa" "pos-control" "neg-control")
+RUN_GRAPH_CONDITIONS=("primary" "haplotypes" "snp1kg" "snp1kg-minaf" "bwa" "pos-control")
 
 # Pass along either all the regions or --fasta_regions to infer them, for construction   
 CONSTRUCT_REGION_OPTS=()
@@ -955,7 +955,7 @@ function get_map_condition_gbwt_penalty() {
 
 # Work out what map conditions to run
 # Doesn't include BWA which is always run.
-RUN_MAP_CONDITIONS=("primary-mp-pe" "snp1kg-minaf-mp-pe" "snp1kg-mp-pe" "pos-control-mp-pe" "neg-control-mp-pe")
+RUN_MAP_CONDITIONS=("primary-mp-pe" "snp1kg-minaf-mp-pe" "snp1kg-mp-pe" "pos-control-mp-pe")
 
 for PENALTY in "${GBWT_RECOMBINATION_PENALTIES[@]}" ; do
     # Add all the GBWT conditions with the specified penalties
@@ -1040,10 +1040,10 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         --bwa --fasta "$(get_graph_condition_base_url bwa)" \
         --fastq "${READS_URL}/sim.fq.gz" \
         --truth "${READS_URL}/true.pos" \
+        --gbwt-baseline "snp1kg-gbwt5.0-mp-pe" \
         --plot-sets \
         "Overall Best Mapper:primary-mp-pe,bwa-mem-pe,snp1kg-gbwt5.0-mp-pe,pos-control-mp-pe" \
         "GBWT vs. Not:snp1kg-mp-pe,snp1kg-gbwt5.0-mp-pe,snp1kg-minaf-mp-pe" \
-        "GBWT vs. Controls:neg-control-mp-pe,snp1kg-gbwt5.0-mp-pe,bwa-mp-pe,pos-control-mp-pe" \
         "${RESTART_OPTS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
         
