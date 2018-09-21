@@ -339,6 +339,8 @@ case "${INPUT_DATA_MODE}" in
         # This pseudoautosomal region BED was manually produced from the PAR table at https://www.ncbi.nlm.nih.gov/grc/human
         # by subtracting 1 from the start posittion and leaving the end position unchanged.
         READ_TAG_BEDS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_PAR.bed")
+        # This BED was made manually from my notes on where the MHC is in GRCh38
+        READ_TAG_BEDS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_MHC.bed")
         # This blacklisted region BED was derived from ENCODE's blacklist BED, converted to our naming scheme.
         # Users should apparently cite:
         # ENCODE Project Consortium. An integrated encyclopedia of DNA elements in the human genome.
