@@ -6,7 +6,7 @@ set -ex
 shopt -s extglob
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@fef6814c13ac9c0ac8ba47762e6bc9e043aa13c8#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@6dc2907cba82c787ea213d232ad861ba3e0bb4a2#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/ucsc_cgl"
@@ -29,7 +29,7 @@ AWSCLI_PACKAGE="awscli==1.15.85"
 # What vg should we use?
 # Update this tag to change the Docker that will be used by a restart.
 # Just editing the script won't do it; the tag name lives in the Toil job store.
-# To update, do something like:
+# To update wholegenome, do something like:
 # docker pull quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run
 # docker tag quay.io/vgteam/vg:dev-v1.8.0-142-g758c92ec-t190-run quay.io/adamnovak/vg:wholegenome
 # docker push quay.io/adamnovak/vg:wholegenome
@@ -382,7 +382,7 @@ case "${INPUT_DATA_MODE}" in
         # Do some test regions of fake chromosomes
         # Exercise both multi-chromosome and offset capabilities, as well as no-VCF contig support
         READ_COUNT="1000"
-        READ_DOWNSAMPLE_PORTION="0.90"
+        READ_DOWNSAMPLE_PORTION="1.0"
         READ_CHUNKS="2"
         READ_TAG_BEDS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref-tags.bed")
         READ_DECOY_REGEXES=()
@@ -400,12 +400,14 @@ case "${INPUT_DATA_MODE}" in
         REAL_REALIGN_BAM_URL=""
         # Override global sample name with one present in these VCFs, for testing
         SAMPLE_NAME="1"
+        # Make sure to pass a real, present sample name to filter, or the filter will remove all variants.
+        FILTER_OPTS=("--filter_samples" "${SAMPLE_NAME}")
         ;;
     testFastaRegions)
         # Do some test chromosomes
         # Exercise --fasta_regions contig name inferrence
         READ_COUNT="1000"
-        READ_DOWNSAMPLE_PORTION="0.90"
+        READ_DOWNSAMPLE_PORTION="1.0"
         READ_CHUNKS="2"
         READ_TAG_BEDS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref-tags.bed")
         READ_DECOY_REGEXES=("^x$")
@@ -424,6 +426,8 @@ case "${INPUT_DATA_MODE}" in
         REAL_REALIGN_BAM_URL=""
         # Override global sample name with one present in these VCFs, for testing
         SAMPLE_NAME="1"
+        # Make sure to pass a real, present sample name to filter, or the filter will remove all variants.
+        FILTER_OPTS=("--filter_samples" "${SAMPLE_NAME}")
         ;;
     *)
         echo 1>&2 "Unknown input data set ${INPUT_DATA_MODE}"
@@ -497,7 +501,7 @@ TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
     --batchSystem mesos --provisioner=aws "--mesosMaster=${MASTER_IP}:5050" \
     "--nodeTypes=${NODE_TYPES}" "--maxNodes=${MAX_NODES}" "--minNodes=${MIN_NODES}" \
     --nodeStorage 200 --defaultPreemptable \
-    --metrics --retryCount 3 --stats)
+    --metrics --retryCount 0 --stats)
 
 ########################################################################################################
 
