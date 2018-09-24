@@ -231,7 +231,7 @@ case "${INPUT_DATA_MODE}" in
         # Simulate in several chunks
         READ_CHUNKS="32"
         # Mark reads with the feature names from these BEDs, if set
-        READ_TAG_BEDS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags.bed")
+        READ_TAG_BEDS=("s3://vg-data/pop-map/input/bed/GRCh38_tags.bed")
         # Drop reads whose truth contigs match any of these regexes
         READ_DECOY_REGEXES=()
         # Define a region name to process. This sets the name that the graphs and
@@ -249,24 +249,24 @@ case "${INPUT_DATA_MODE}" in
         # Define the VCF and FASTA basenames. We assume each VCF has a TBI.
         # If multiple files are used they are paired up with the contigs in order until the VCFs run out.
         # We now use GRCh38 for compatibility with Platinum Genomes
-        CONSTRUCT_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/1kg/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr21_GRCh38.genotypes.20170504.vcf.gz")
+        CONSTRUCT_VCF_URLS=("s3://vg-data/pop-map/input/1kg/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr21_GRCh38.genotypes.20170504.vcf.gz")
         # TODO: This FASTA qhould have the centromeres, but they are hard-masked.
-        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/GRCh38.only21.fa.gz")
+        CONSTRUCT_FASTA_URLS=("s3://vg-data/pop-map/input/GRCh38.only21.fa.gz")
         # What FASTA should we use for BWA mapping and Freebayes calling? It needs to have just the selected regions cut out.
         MAPPING_CALLING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         # What VCF should we use for the truth? Must be a single VCF.
         # Used for evaluation and also for sample graph construction and read simulation.
-        EVALUATION_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/platinum-genomes/2017-1.0/hg38/hybrid/nochr/hg38.hybrid.21.vcf.gz"
+        EVALUATION_VCF_URL="s3://vg-data/pop-map/input/platinum-genomes/2017-1.0/hg38/hybrid/nochr/hg38.hybrid.21.vcf.gz"
         # And a single FASTA
         EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         # And what high confidence regions should we use there?
         # This can't be specified if we are using regions on GRAPH_REGIONS
-        EVALUATION_BED_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/platinum-genomes/2017-1.0/hg38/hybrid/nochr/hg38.hybrid.21.bed.gz"
+        EVALUATION_BED_URL="s3://vg-data/pop-map/input/platinum-genomes/2017-1.0/hg38/hybrid/nochr/hg38.hybrid.21.bed.gz"
         
         # We will process an interleaved fastq or a BAM of real reads and evaluate its variant calls too.
         # This can be empty, but these are mutually exclusive
         REAL_FASTQ_URL=""
-        REAL_REALIGN_BAM_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/giab/ftp/data/NA12878/NIST_NA12878_HG001_HiSeq_300x/RMNISTHS_30xdownsample.21.bam"
+        REAL_REALIGN_BAM_URL="s3://vg-data/pop-map/input/giab/ftp/data/NA12878/NIST_NA12878_HG001_HiSeq_300x/RMNISTHS_30xdownsample.21.bam"
         ;;
     MHC)
         # Actually do a smaller test
@@ -280,13 +280,13 @@ case "${INPUT_DATA_MODE}" in
         GRAPH_CONTIG_OFFSETS=("28510119")
         GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:28510120-33480577")
         CONSTRUCT_VCF_URLS=("ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr6_GRCh38_sites.20170504.vcf.gz")
-        # We had "s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-MHC.vcf.gz" but it is malformed
-        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr6.fa.gz")
-        MAPPING_CALLING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/MHC.fa"
+        # We had "s3://vg-data/bakeoff/1kg_hg38-MHC.vcf.gz" but it is malformed
+        CONSTRUCT_FASTA_URLS=("s3://vg-data/bakeoff/chr6.fa.gz")
+        MAPPING_CALLING_FASTA_URL="s3://vg-data/bakeoff/MHC.fa"
         EVALUATION_VCF_URL="${CONSTRUCT_VCF_URLS[0]}"
         EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         EVALUATION_BED_URL=""
-        REAL_FASTQ_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/platinum_NA12878_MHC.fq.gz"
+        REAL_FASTQ_URL="s3://vg-data/bakeoff/platinum_NA12878_MHC.fq.gz"
         REAL_REALIGN_BAM_URL=""
         ;;
     BRCA1)
@@ -301,13 +301,13 @@ case "${INPUT_DATA_MODE}" in
         GRAPH_CONTIG_OFFSETS=("43044293")
         GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:43044294-43125484")
         CONSTRUCT_VCF_URLS=("ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr17_GRCh38.genotypes.20170504.vcf.gz")
-        # We had "s3://cgl-pipeline-inputs/vg_cgl/bakeoff/1kg_hg38-BRCA1.vcf.gz" but it is malformed
-        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/bakeoff/chr17.fa.gz")
-        MAPPING_CALLING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/BRCA1.fa"
+        # We had "s3://vg-data/bakeoff/1kg_hg38-BRCA1.vcf.gz" but it is malformed
+        CONSTRUCT_FASTA_URLS=("s3://vg-data/bakeoff/chr17.fa.gz")
+        MAPPING_CALLING_FASTA_URL="s3://vg-data/bakeoff/BRCA1.fa"
         EVALUATION_VCF_URL="${CONSTRUCT_VCF_URLS[0]}"
         EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         EVALUATION_BED_URL=""
-        REAL_FASTQ_URL="s3://cgl-pipeline-inputs/vg_cgl/bakeoff/platinum_NA12878_BRCA1.fq.gz"
+        REAL_FASTQ_URL="s3://vg-data/bakeoff/platinum_NA12878_BRCA1.fq.gz"
         REAL_REALIGN_BAM_URL=""
         ;;
     WG38)
@@ -318,36 +318,36 @@ case "${INPUT_DATA_MODE}" in
         READ_DOWNSAMPLE_PORTION="1.0"
         READ_CHUNKS="32"
         # This BED comes from Karen Miga's centromere and telomere BEDs (see ../real-data in this repo)
-        # and Trevor Pesout's LINE and SINE BEDs (from s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/LINE.bed and SINE.bed)
-        READ_TAG_BEDS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags.bed")
+        # and Trevor Pesout's LINE and SINE BEDs (from s3://vg-data/pop-map/input/bed/LINE.bed and SINE.bed)
+        READ_TAG_BEDS=("s3://vg-data/pop-map/input/bed/GRCh38_tags.bed")
         # This BED was made by thresholding http://hgdownload.soe.ucsc.edu/gbdb/hg38/hoffmanMappability/k100.Umap.MultiTrackMappability.bw
         # at 1.0 using bwtool, and applies a "umapAll100" tag at positions where all overlapping 100-mers map.
         # So 100-bp reads touching one of these annotations really should have a mappable 100-mer in them, before variants/errors.
-        READ_TAG_BEDS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_umapAll100.bed")
+        READ_TAG_BEDS+=("s3://vg-data/pop-map/input/bed/GRCh38_tags_umapAll100.bed")
         # This BED was made directly from http://hgdownload.soe.ucsc.edu/gbdb/hg38/hoffmanMappability/k100.Unique.Mappability.bb 
         # and applies a "umapAny100" tag at positions where at least one overlapping 100-mer maps.
-        READ_TAG_BEDS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_umapAny100.bed")
+        READ_TAG_BEDS+=("s3://vg-data/pop-map/input/bed/GRCh38_tags_umapAny100.bed")
         # These two BEDs were generated by downloading Gencode v24 whole genes and exons from the UCSC table browser,
         # removing the "chr", and then stripping down to contig, start, end and adding tag names.
-        READ_TAG_BEDS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_gencodeGene.bed")
-        READ_TAG_BEDS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_gencodeExon.bed")
+        READ_TAG_BEDS+=("s3://vg-data/pop-map/input/bed/GRCh38_tags_gencodeGene.bed")
+        READ_TAG_BEDS+=("s3://vg-data/pop-map/input/bed/GRCh38_tags_gencodeExon.bed")
         # These two BEDs were made from https://raw.githubusercontent.com/ENCODE-DCC/encValData/master/GRCh38/GRCh38.chrom.sizes
         # by removing "chr" and turning each record of a "_random" contig into a full-length unlocalized feature, and each
         # "chrUn" contig into a full-length unplaced feature
-        READ_TAG_BEDS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_unlocalizedContig.bed")
-        READ_TAG_BEDS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_unplacedContig.bed")
+        READ_TAG_BEDS+=("s3://vg-data/pop-map/input/bed/GRCh38_tags_unlocalizedContig.bed")
+        READ_TAG_BEDS+=("s3://vg-data/pop-map/input/bed/GRCh38_tags_unplacedContig.bed")
         # This pseudoautosomal region BED was manually produced from the PAR table at https://www.ncbi.nlm.nih.gov/grc/human
         # by subtracting 1 from the start posittion and leaving the end position unchanged.
-        READ_TAG_BEDS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_PAR.bed")
+        READ_TAG_BEDS+=("s3://vg-data/pop-map/input/bed/GRCh38_tags_PAR.bed")
         # This BED was made manually from my notes on where the MHC is in GRCh38
-        READ_TAG_BEDS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_MHC.bed")
+        READ_TAG_BEDS+=("s3://vg-data/pop-map/input/bed/GRCh38_tags_MHC.bed")
         # This blacklisted region BED was derived from ENCODE's blacklist BED, converted to our naming scheme.
         # Users should apparently cite:
         # ENCODE Project Consortium. An integrated encyclopedia of DNA elements in the human genome.
         # Nature. 2012 Sep 6;489(7414):57-74. doi: 10.1038/nature11247.
         # Original BED: http://mitra.stanford.edu/kundaje/akundaje/release/blacklists/hg38-human/hg38.blacklist.bed.gz
         # See: https://sites.google.com/site/anshulkundaje/projects/blacklists
-        READ_TAG_BEDS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_blacklist.bed")
+        READ_TAG_BEDS+=("s3://vg-data/pop-map/input/bed/GRCh38_tags_blacklist.bed")
         # Drop reads on Y (because NA12878 is XX AFAIK) and also on all the _decoy sequences (because they aren't "real" parts of the reference)
         # TODO: Have a better, graph-internal way to delineate decoys.
         READ_DECOY_REGEXES=("^Y$" "_decoy$")
@@ -361,7 +361,7 @@ case "${INPUT_DATA_MODE}" in
         for CONTIG in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 X Y ; do
             # Use the per-chromosome VCFs from 1KG, which we have mirrored in S3
             # Make sure to do all the chromosomes, even Y, for our reference, and in the order they appear in the FASTA.
-            CONSTRUCT_VCF_URLS+=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/1kg/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr${CONTIG}_GRCh38.genotypes.20170504.vcf.gz")
+            CONSTRUCT_VCF_URLS+=("s3://vg-data/pop-map/input/1kg/vol1/ftp/release/20130502/supporting/GRCh38_positions/ALL.chr${CONTIG}_GRCh38.genotypes.20170504.vcf.gz")
         done
         # I built this by dropping the alts from
         # http://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz,
@@ -369,14 +369,14 @@ case "${INPUT_DATA_MODE}" in
         # decoys that BWA uses (but dropping the HLAs), and dropping the "chr"
         # from all the contig names. It has the centromeres in, but contains
         # lost of soft-masked (lower-case) sequence. It has the Y PARs from
-        # s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/bed/GRCh38_tags_PAR.bed 
+        # s3://vg-data/pop-map/input/bed/GRCh38_tags_PAR.bed 
         # hard-masked out
-        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/hg38.centromeres.decoys.noAlts.maskYPAR.fa.gz")
+        CONSTRUCT_FASTA_URLS=("s3://vg-data/pop-map/input/hg38.centromeres.decoys.noAlts.maskYPAR.fa.gz")
         MAPPING_CALLING_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
         # Evaluate against Platinum Genomes/GIAB hybrid
-        EVALUATION_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/platinum-genomes/2017-1.0/hg38/hybrid/nochr/hg38.hybrid.vcf.gz"
+        EVALUATION_VCF_URL="s3://vg-data/pop-map/input/platinum-genomes/2017-1.0/hg38/hybrid/nochr/hg38.hybrid.vcf.gz"
         EVALUATION_FASTA_URL="${CONSTRUCT_FASTA_URLS[0]}"
-        EVALUATION_BED_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/platinum-genomes/2017-1.0/hg38/hybrid/nochr/hg38.hybrid.bed.gz"
+        EVALUATION_BED_URL="s3://vg-data/pop-map/input/platinum-genomes/2017-1.0/hg38/hybrid/nochr/hg38.hybrid.bed.gz"
         REAL_FASTQ_URL=""
         REAL_REALIGN_BAM_URL="ftp://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/NA12878/NIST_NA12878_HG001_HiSeq_300x/RMNISTHS_30xdownsample.bam"
         ;;
@@ -386,17 +386,17 @@ case "${INPUT_DATA_MODE}" in
         READ_COUNT="1000"
         READ_DOWNSAMPLE_PORTION="1.0"
         READ_CHUNKS="2"
-        READ_TAG_BEDS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref-tags.bed")
+        READ_TAG_BEDS=("s3://vg-data/pop-map/input/test-data/ref-tags.bed")
         READ_DECOY_REGEXES=()
         REGION_NAME="test"
         GRAPH_CONTIGS=("ref" "x" "nonvariable")
         GRAPH_CONTIG_OFFSETS=("5" "5" "0")
         GRAPH_REGIONS=("${GRAPH_CONTIGS[0]}:6-1133" "${GRAPH_CONTIGS[1]}:6-1001" "${GRAPH_CONTIGS[2]}")
-        CONSTRUCT_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref.vcf.gz" "s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/x.vcf.gz")
-        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.fa")
-        MAPPING_CALLING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined-minus-5-bases.fa"
-        EVALUATION_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.vcf.gz"
-        EVALUATION_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.fa"
+        CONSTRUCT_VCF_URLS=("s3://vg-data/pop-map/input/test-data/ref.vcf.gz" "s3://vg-data/pop-map/input/test-data/x.vcf.gz")
+        CONSTRUCT_FASTA_URLS=("s3://vg-data/pop-map/input/test-data/combined.fa")
+        MAPPING_CALLING_FASTA_URL="s3://vg-data/pop-map/input/test-data/combined-minus-5-bases.fa"
+        EVALUATION_VCF_URL="s3://vg-data/pop-map/input/test-data/combined.vcf.gz"
+        EVALUATION_FASTA_URL="s3://vg-data/pop-map/input/test-data/combined.fa"
         EVALUATION_BED_URL=""
         REAL_FASTQ_URL=""
         REAL_REALIGN_BAM_URL=""
@@ -411,18 +411,18 @@ case "${INPUT_DATA_MODE}" in
         READ_COUNT="1000"
         READ_DOWNSAMPLE_PORTION="1.0"
         READ_CHUNKS="2"
-        READ_TAG_BEDS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref-tags.bed")
+        READ_TAG_BEDS=("s3://vg-data/pop-map/input/test-data/ref-tags.bed")
         READ_DECOY_REGEXES=("^x$")
         REGION_NAME="testFastaRegions"
         GRAPH_CONTIGS=()
         GRAPH_CONTIG_OFFSETS=()
         # If empty we pass --fasta_regions to construct
         GRAPH_REGIONS=()
-        CONSTRUCT_VCF_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/ref.vcf.gz" "s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/x.vcf.gz")
-        CONSTRUCT_FASTA_URLS=("s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.fa")
-        MAPPING_CALLING_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.fa"
-        EVALUATION_VCF_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.vcf.gz"
-        EVALUATION_FASTA_URL="s3://cgl-pipeline-inputs/vg_cgl/pop-map/input/test-data/combined.fa"
+        CONSTRUCT_VCF_URLS=("s3://vg-data/pop-map/input/test-data/ref.vcf.gz" "s3://vg-data/pop-map/input/test-data/x.vcf.gz")
+        CONSTRUCT_FASTA_URLS=("s3://vg-data/pop-map/input/test-data/combined.fa")
+        MAPPING_CALLING_FASTA_URL="s3://vg-data/pop-map/input/test-data/combined.fa"
+        EVALUATION_VCF_URL="s3://vg-data/pop-map/input/test-data/combined.vcf.gz"
+        EVALUATION_FASTA_URL="s3://vg-data/pop-map/input/test-data/combined.fa"
         EVALUATION_BED_URL=""
         REAL_FASTQ_URL=""
         REAL_REALIGN_BAM_URL=""
@@ -503,7 +503,7 @@ TOIL_CLUSTER_OPTS=(--realTimeLogging --logInfo \
     --batchSystem mesos --provisioner=aws "--mesosMaster=${MASTER_IP}:5050" \
     "--nodeTypes=${NODE_TYPES}" "--maxNodes=${MAX_NODES}" "--minNodes=${MIN_NODES}" \
     --nodeStorage 200 --defaultPreemptable \
-    --metrics --retryCount 0 --stats)
+    --metrics --retryCount 3 --stats)
 
 ########################################################################################################
 
