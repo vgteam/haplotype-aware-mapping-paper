@@ -6,7 +6,7 @@ set -ex
 shopt -s extglob
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@6dc2907cba82c787ea213d232ad861ba3e0bb4a2#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@ba2f948073559c03b1818b488fe03a6a69c296c1#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/ucsc_cgl"
