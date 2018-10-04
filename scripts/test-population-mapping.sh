@@ -6,7 +6,7 @@ set -ex
 shopt -s extglob
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@ba2f948073559c03b1818b488fe03a6a69c296c1#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@fa56aa47426d8f7bbb912ed9ee370369df8294ba#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/ucsc_cgl"
@@ -943,9 +943,10 @@ function get_map_condition_graph_condition() {
     local CONDITION="${1}"
     # Drop all the suffixes, in order
     local CONDITION="${CONDITION%-pe}"
-    local CONDITION="${CONDITION%-mp}"
-    # Greedily lop off the biggest gbwt specifier we can get with extglob syntax
+    # Greedily lop off the biggest -mp, -mp1, -mp2, etc. specifier we can get with extglob syntax
     # See <http://wiki.bash-hackers.org/syntax/pattern>
+    local CONDITION="${CONDITION%%-mp*([0-9])}"
+    # Greedily lop off the biggest gbwt specifier we can get with extglob syntax
     local CONDITION="${CONDITION%%-gbwt*([0-9.])}"
     echo "${CONDITION}"
 }
@@ -966,10 +967,13 @@ RUN_MAP_CONDITIONS=("primary-mp-pe" "snp1kg-minaf-mp-pe" "snp1kg-mp-pe" "pos-con
 for PENALTY in "${GBWT_RECOMBINATION_PENALTIES[@]}" ; do
     # Add all the GBWT conditions with the specified penalties
     RUN_MAP_CONDITIONS+=("snp1kg-gbwt${PENALTY}-mp-pe")
+    # Also do alternate mpmap options versions of them
+    RUN_MAP_CONDITIONS+=("snp1kg-gbwt${PENALTY}-mp1-pe")
 done
 if [[ "${#GBWT_RECOMBINATION_PENALTIES[@]}" -eq "0" ]] ; then
     # If there are no penalties specified, just add the default-penalty gbwt in
     RUN_MAP_CONDITIONS+=("snp1kg-gbwt-mp-pe")
+    RUN_MAP_CONDITIONS+=("snp1kg-gbwt-mp1-pe")
 fi
 
 
@@ -1024,6 +1028,9 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
             GBWT_PENALTY_OPTS+=("${PENALTY}")
         fi
     done
+    # Deduplicate the penalty values, which we know to not contain spaces.
+    # See <https://stackoverflow.com/a/13648438>
+    GBWT_PENALTY_OPTS=($(echo "${GBWT_PENALTY_OPTS[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
     if [[ "${#GBWT_PENALTY_OPTS[@]}" -ne 0 ]] ; then
         # There are penalties to send, so prefix them
         GBWT_PENALTY_OPTS=("--gbwt-penalties" "${GBWT_PENALTY_OPTS[@]}")
@@ -1047,9 +1054,10 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         --fastq "${READS_URL}/sim.fq.gz" \
         --truth "${READS_URL}/true.pos" \
         --gbwt-baseline "snp1kg-gbwt5.0-mp-pe" \
+        --more-mpmap-opts "--single-path-mode --delay-popultatin" \
         --plot-sets \
-        "Overall Best Mapper:primary-mp-pe,bwa-mem-pe,snp1kg-gbwt5.0-mp-pe,pos-control-mp-pe" \
-        "GBWT vs. Not:snp1kg-mp-pe,snp1kg-gbwt5.0-mp-pe,snp1kg-minaf-mp-pe" \
+        "Overall Best Mapper:primary-mp-pe,bwa-mem-pe,snp1kg-gbwt5.0-mp-pe,snp1kg-gbwt5.0-mp1-pe,pos-control-mp-pe" \
+        "GBWT vs. Not:snp1kg-mp-pe,snp1kg-gbwt5.0-mp-pe,snp1kg-gbwt5.0-mp1-pe,snp1kg-minaf-mp-pe" \
         "${RESTART_OPTS[@]}" \
         "${TOIL_CLUSTER_OPTS[@]}"
         
