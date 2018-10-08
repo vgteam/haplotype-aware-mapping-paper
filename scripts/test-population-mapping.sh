@@ -6,7 +6,7 @@ set -ex
 shopt -s extglob
 
 # What toil-vg should we install?
-TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@fa56aa47426d8f7bbb912ed9ee370369df8294ba#egg=toil-vg"
+TOIL_VG_PACKAGE="git+https://github.com/adamnovak/toil-vg.git@91e9cacdfc4a5e8b6637354caa9ab4f1fd255be1#egg=toil-vg"
 
 # What Docker registry can the corresponding dashboard containers (Grafana, etc.) be obtained from?
 TOIL_DOCKER_REGISTRY="quay.io/ucsc_cgl"
@@ -1054,7 +1054,7 @@ if [[ "${SIM_ALIGNMENTS_READY}" != "1" ]] ; then
         --fastq "${READS_URL}/sim.fq.gz" \
         --truth "${READS_URL}/true.pos" \
         --gbwt-baseline "snp1kg-gbwt5.0-mp-pe" \
-        --more-mpmap-opts "--single-path-mode --delay-popultatin" \
+        --more-mpmap-opts "--single-path-mode --delay-population" \
         --plot-sets \
         "Overall Best Mapper:primary-mp-pe,bwa-mem-pe,snp1kg-gbwt5.0-mp-pe,snp1kg-gbwt5.0-mp1-pe,pos-control-mp-pe" \
         "GBWT vs. Not:snp1kg-mp-pe,snp1kg-gbwt5.0-mp-pe,snp1kg-gbwt5.0-mp1-pe,snp1kg-minaf-mp-pe" \
